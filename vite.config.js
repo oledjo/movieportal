@@ -14,6 +14,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: false
-  }
+    sourcemap: false,
+    // Ensure .nojekyll is copied
+    copyPublicDir: true
+  },
+  publicDir: 'public'
 })
