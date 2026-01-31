@@ -124,6 +124,16 @@ const hasReason = computed(() => {
   return !!props.movie.reason
 })
 
+// Allowed provider IDs (Netflix + Russian platforms)
+const ALLOWED_PROVIDER_IDS = new Set([8, 283, 115, 111, 113, 507, 501, 502, 117, 119, 420, 425])
+const ALLOWED_PROVIDER_NAMES = ['netflix', 'кинопоиск', 'okko', 'ivi', 'premier', 'megogo', 'wink', 'more.tv', 'amedia', 'amediateka']
+
+function isProviderAllowed(provider) {
+  if (ALLOWED_PROVIDER_IDS.has(provider.id)) return true
+  const nameLower = provider.name.toLowerCase()
+  return ALLOWED_PROVIDER_NAMES.some(allowed => nameLower.includes(allowed))
+}
+
 const watchProviders = computed(() => {
   const providers = props.tmdb?.watchProviders
   if (!providers) return []
@@ -135,15 +145,22 @@ const watchProviders = computed(() => {
     ...(providers.buy || [])
   ]
   
-  // Remove duplicates by provider ID
+  // Filter only allowed providers and remove duplicates
   const uniqueProviders = []
   const seenIds = new Set()
   for (const provider of allProviders) {
-    if (!seenIds.has(provider.id)) {
+    if (isProviderAllowed(provider) && !seenIds.has(provider.id)) {
       seenIds.add(provider.id)
       uniqueProviders.push(provider)
     }
   }
+  
+  // Sort: Netflix first, then alphabetically
+  uniqueProviders.sort((a, b) => {
+    if (a.name.toLowerCase().includes('netflix')) return -1
+    if (b.name.toLowerCase().includes('netflix')) return 1
+    return a.name.localeCompare(b.name, 'ru')
+  })
   
   // Limit to 4 providers for card display
   return uniqueProviders.slice(0, 4)

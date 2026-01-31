@@ -85,10 +85,35 @@ const countries = computed(() => {
   return countries.map(c => c.name).join(', ')
 })
 
+// Allowed provider IDs (Netflix + Russian platforms)
+const ALLOWED_PROVIDER_IDS = new Set([8, 283, 115, 111, 113, 507, 501, 502, 117, 119, 420, 425])
+const ALLOWED_PROVIDER_NAMES = ['netflix', 'кинопоиск', 'okko', 'ivi', 'premier', 'megogo', 'wink', 'more.tv', 'amedia', 'amediateka']
+
+function isProviderAllowed(provider) {
+  if (ALLOWED_PROVIDER_IDS.has(provider.id)) return true
+  const nameLower = provider.name.toLowerCase()
+  return ALLOWED_PROVIDER_NAMES.some(allowed => nameLower.includes(allowed))
+}
+
+function filterProviders(providerList) {
+  if (!providerList) return []
+  return providerList.filter(isProviderAllowed)
+    .sort((a, b) => {
+      if (a.name.toLowerCase().includes('netflix')) return -1
+      if (b.name.toLowerCase().includes('netflix')) return 1
+      return a.name.localeCompare(b.name, 'ru')
+    })
+}
+
 const watchProviders = computed(() => {
   const providers = props.movie.tmdb?.watchProviders
   if (!providers) return { flatrate: [], rent: [], buy: [] }
-  return providers
+  
+  return {
+    flatrate: filterProviders(providers.flatrate),
+    rent: filterProviders(providers.rent),
+    buy: filterProviders(providers.buy)
+  }
 })
 
 const hasProviders = computed(() => {

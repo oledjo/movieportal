@@ -71,7 +71,51 @@ const availableSections = computed(() => {
   ]
 })
 
-// Available providers for filter (extract from all movies)
+// Allowed provider IDs (Netflix + Russian platforms)
+// Netflix: 8, Кинопоиск HD: 283, Okko: 115, Ivi: 111, Premier: 113, Megogo: 507, Wink: 501, more.tv: 502
+const ALLOWED_PROVIDER_IDS = new Set([
+  8,    // Netflix
+  283,  // Кинопоиск HD
+  115,  // Okko
+  111,  // Ivi
+  113,  // Premier
+  507,  // Megogo
+  501,  // Wink
+  502,  // more.tv
+  117,  // Okko (альтернативный ID)
+  119,  // KinoPoisk
+  420,  // Кинопоиск
+  425   // Кинопоиск HD (альтернативный)
+])
+
+// Allowed provider names (for fallback matching)
+const ALLOWED_PROVIDER_NAMES = [
+  'netflix',
+  'кинопоиск',
+  'okko',
+  'ivi',
+  'premier',
+  'megogo',
+  'wink',
+  'more.tv',
+  'amedia',
+  'amediateka'
+]
+
+function isProviderAllowed(provider) {
+  // Check by ID first
+  if (ALLOWED_PROVIDER_IDS.has(provider.id)) {
+    return true
+  }
+  
+  // Check by name (case-insensitive, partial match)
+  const providerNameLower = provider.name.toLowerCase()
+  return ALLOWED_PROVIDER_NAMES.some(allowedName => 
+    providerNameLower.includes(allowedName)
+  )
+}
+
+// Available providers for filter (extract from all movies, filtered)
 const availableProviders = computed(() => {
   const providerMap = new Map()
   
@@ -86,7 +130,8 @@ const availableProviders = computed(() => {
     ]
     
     allProviders.forEach(provider => {
-      if (!providerMap.has(provider.id)) {
+      // Only add allowed providers
+      if (isProviderAllowed(provider) && !providerMap.has(provider.id)) {
         providerMap.set(provider.id, provider)
       }
     })
@@ -94,7 +139,12 @@ const availableProviders = computed(() => {
   
   // Sort by name and return as array
   return Array.from(providerMap.values())
-    .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    .sort((a, b) => {
+      // Netflix first, then alphabetically
+      if (a.name.toLowerCase().includes('netflix')) return -1
+      if (b.name.toLowerCase().includes('netflix')) return 1
+      return a.name.localeCompare(b.name, 'ru')
+    })
 })
 
 // Helper function to get movie rating (outside computed for reuse)
