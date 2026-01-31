@@ -7,10 +7,12 @@ const props = defineProps({
   sort: String,
   minRating: Number,
   movieType: String,
-  sections: Array
+  provider: String,
+  sections: Array,
+  providers: Array
 })
 
-const emit = defineEmits(['update:search', 'update:section', 'update:sort', 'update:minRating', 'update:movieType'])
+const emit = defineEmits(['update:search', 'update:section', 'update:sort', 'update:minRating', 'update:movieType', 'update:provider'])
 
 const sortOptions = [
   { value: 'default', label: 'По умолчанию' },
@@ -37,7 +39,7 @@ const movieTypeOptions = [
 ]
 
 const hasActiveFilters = computed(() => {
-  return props.search || props.section !== 'all' || props.minRating > 0 || props.sort !== 'default' || props.movieType !== 'all'
+  return props.search || props.section !== 'all' || props.minRating > 0 || props.sort !== 'default' || props.movieType !== 'all' || props.provider !== 'all'
 })
 
 function clearFilters() {
@@ -46,6 +48,7 @@ function clearFilters() {
   emit('update:sort', 'default')
   emit('update:minRating', 0)
   emit('update:movieType', 'all')
+  emit('update:provider', 'all')
 }
 </script>
 
@@ -148,6 +151,25 @@ function clearFilters() {
             :value="opt.value"
           >
             {{ opt.label }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Provider filter -->
+      <div class="filter-group" v-if="providers && providers.length > 0">
+        <label class="filter-label">Платформа</label>
+        <select
+          :value="provider"
+          @change="emit('update:provider', $event.target.value)"
+          class="filter-select"
+        >
+          <option value="all">Все платформы</option>
+          <option
+            v-for="p in providers"
+            :key="p.id"
+            :value="p.id.toString()"
+          >
+            {{ p.name }}
           </option>
         </select>
       </div>

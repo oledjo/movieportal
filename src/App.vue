@@ -23,6 +23,7 @@ const selectedSection = ref('all')
 const sortBy = ref('default')
 const minRating = ref(0)
 const movieType = ref('all') // 'all', 'movie', 'series'
+const selectedProvider = ref('all') // Filter by streaming platform
 
 // API Keys from localStorage
 const todoistToken = ref(localStorage.getItem('todoist_token') || '')
@@ -37,6 +38,32 @@ const availableSections = computed(() => {
       .filter(id => SECTION_NAMES[id])
       .map(id => ({ id, name: SECTION_NAMES[id] }))
   ]
+})
+
+// Available providers for filter (extract from all movies)
+const availableProviders = computed(() => {
+  const providerMap = new Map()
+  
+  movies.value.forEach(movie => {
+    const providers = getMovieTmdbData(movie.id)?.watchProviders
+    if (!providers) return
+    
+    const allProviders = [
+      ...(providers.flatrate || []),
+      ...(providers.rent || []),
+      ...(providers.buy || [])
+    ]
+    
+    allProviders.forEach(provider => {
+      if (!providerMap.has(provider.id)) {
+        providerMap.set(provider.id, provider)
+      }
+    })
+  })
+  
+  // Sort by name and return as array
+  return Array.from(providerMap.values())
+    .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
 })
 
 // Filtered and sorted movies
@@ -65,6 +92,23 @@ const filteredMovies = computed(() => {
   // Section filter
   if (selectedSection.value !== 'all') {
     result = result.filter(m => m.sectionId === selectedSection.value)
+  }
+
+  // Provider filter (streaming platform)
+  if (selectedProvider.value !== 'all') {
+    const providerId = parseInt(selectedProvider.value)
+    result = result.filter(m => {
+      const providers = getMovieTmdbData(m.id)?.watchProviders
+      if (!providers) return false
+      
+      // Check if provider exists in flatrate, rent, or buy
+      const allProviders = [
+        ...(providers.flatrate || []),
+        ...(providers.rent || []),
+        ...(providers.buy || [])
+      ]
+      return allProviders.some(p => p.id === providerId)
+    })
   }
 
   // Rating filter
@@ -298,7 +342,9 @@ onMounted(() => {
           v-model:sort="sortBy"
           v-model:minRating="minRating"
           v-model:movieType="movieType"
+          v-model:provider="selectedProvider"
           :sections="availableSections"
+          :providers="availableProviders"
         />
 
         <!-- Posters loading indicator -->

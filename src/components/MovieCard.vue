@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { getProviderLogoUrl } from '../services/tmdb.js'
 
 const props = defineProps({
   movie: {
@@ -122,6 +123,31 @@ const country = computed(() => {
 const hasReason = computed(() => {
   return !!props.movie.reason
 })
+
+const watchProviders = computed(() => {
+  const providers = props.tmdb?.watchProviders
+  if (!providers) return []
+  
+  // Combine all providers (flatrate, rent, buy) and deduplicate by ID
+  const allProviders = [
+    ...(providers.flatrate || []),
+    ...(providers.rent || []),
+    ...(providers.buy || [])
+  ]
+  
+  // Remove duplicates by provider ID
+  const uniqueProviders = []
+  const seenIds = new Set()
+  for (const provider of allProviders) {
+    if (!seenIds.has(provider.id)) {
+      seenIds.add(provider.id)
+      uniqueProviders.push(provider)
+    }
+  }
+  
+  // Limit to 4 providers for card display
+  return uniqueProviders.slice(0, 4)
+})
 </script>
 
 <template>
@@ -187,6 +213,22 @@ const hasReason = computed(() => {
         <span v-else-if="durationFormatted || tmdbRuntime" class="duration">{{ durationFormatted || tmdbRuntime }}</span>
       </div>
       <div v-if="genres" class="genres">{{ genres }}</div>
+      
+      <!-- Watch Providers -->
+      <div v-if="watchProviders.length > 0" class="providers">
+        <div class="providers-list">
+          <img
+            v-for="provider in watchProviders"
+            :key="provider.id"
+            :src="getProviderLogoUrl(provider.logo, 'small')"
+            :alt="provider.name"
+            :title="provider.name"
+            class="provider-logo"
+            loading="lazy"
+          />
+        </div>
+      </div>
+      
       <div v-if="hasReason" class="reason-hint">
         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
@@ -385,6 +427,33 @@ const hasReason = computed(() => {
 .reason-hint svg {
   opacity: 0.6;
   flex-shrink: 0;
+}
+
+.providers {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.providers-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.provider-logo {
+  height: 20px;
+  width: auto;
+  border-radius: 4px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px;
+  transition: transform 0.2s;
+}
+
+.provider-logo:hover {
+  transform: scale(1.1);
 }
 
 @media (max-width: 768px) {

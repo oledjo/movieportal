@@ -2,6 +2,22 @@
 const TMDB_API_URL = 'https://api.themoviedb.org/3'
 const TMDB_IMAGE_URL = 'https://image.tmdb.org/t/p'
 
+// Provider logo sizes
+export const PROVIDER_LOGO_SIZES = {
+  small: 'w45',
+  medium: 'w92',
+  large: 'w154',
+  original: 'original'
+}
+
+/**
+ * Get provider logo URL
+ */
+export function getProviderLogoUrl(logoPath, size = 'medium') {
+  if (!logoPath) return null
+  return `${TMDB_IMAGE_URL}/${PROVIDER_LOGO_SIZES[size]}${logoPath}`
+}
+
 // Image sizes
 export const POSTER_SIZES = {
   small: 'w185',
@@ -432,6 +448,57 @@ export async function searchMovie(title, apiKey, year = null, isTV = false) {
 }
 
 /**
+ * Fetch watch providers (streaming platforms) for a movie/TV
+ */
+export async function fetchWatchProviders(tmdbId, apiKey, isTV = false, country = 'RU') {
+  if (!apiKey || !tmdbId) return null
+
+  const cacheKey = `providers-${tmdbId}-${isTV}-${country}`
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey)
+  }
+
+  const endpoint = isTV ? 'tv' : 'movie'
+  const url = `${TMDB_API_URL}/${endpoint}/${tmdbId}/watch/providers?api_key=${apiKey}`
+
+  try {
+    const response = await fetch(url)
+    if (!response.ok) return null
+
+    const data = await response.json()
+    const providers = data.results?.[country] || null
+
+    if (providers) {
+      const providerData = {
+        flatrate: (providers.flatrate || []).map(p => ({
+          id: p.provider_id,
+          name: p.provider_name,
+          logo: p.logo_path
+        })),
+        rent: (providers.rent || []).map(p => ({
+          id: p.provider_id,
+          name: p.provider_name,
+          logo: p.logo_path
+        })),
+        buy: (providers.buy || []).map(p => ({
+          id: p.provider_id,
+          name: p.provider_name,
+          logo: p.logo_path
+        }))
+      }
+      cache.set(cacheKey, providerData)
+      return providerData
+    }
+
+    cache.set(cacheKey, null)
+    return null
+  } catch (error) {
+    console.error('TMDB watch providers error:', error)
+    return null
+  }
+}
+
+/**
  * Fetch detailed movie/TV info from TMDB
  */
 export async function fetchMovieDetails(tmdbId, apiKey, isTV = false) {
@@ -532,6 +599,13 @@ export async function batchSearchMovies(movies, apiKey, onProgress = null, fetch
       if (details) {
         Object.assign(searchResult, { details })
       }
+      
+      // Fetch watch providers (streaming platforms)
+      const providers = await fetchWatchProviders(searchResult.id, apiKey, searchResult.isTV, 'RU')
+      if (providers) {
+        searchResult.watchProviders = providers
+      }
+      
       // Small extra delay for details request
       await new Promise(resolve => setTimeout(resolve, 50))
     }

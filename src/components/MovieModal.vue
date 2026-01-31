@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted } from 'vue'
-import { getBackdropUrl } from '../services/tmdb.js'
+import { getBackdropUrl, getProviderLogoUrl } from '../services/tmdb.js'
 
 const props = defineProps({
   movie: {
@@ -83,6 +83,17 @@ const runtime = computed(() => {
 const countries = computed(() => {
   const countries = props.movie.tmdb?.details?.productionCountries || []
   return countries.map(c => c.name).join(', ')
+})
+
+const watchProviders = computed(() => {
+  const providers = props.movie.tmdb?.watchProviders
+  if (!providers) return { flatrate: [], rent: [], buy: [] }
+  return providers
+})
+
+const hasProviders = computed(() => {
+  const p = watchProviders.value
+  return (p.flatrate?.length || 0) + (p.rent?.length || 0) + (p.buy?.length || 0) > 0
 })
 
 // Handle escape key
@@ -252,6 +263,65 @@ onUnmounted(() => {
                 <div v-for="actor in cast" :key="actor.name" class="cast-item">
                   <span class="actor-name">{{ actor.name }}</span>
                   <span v-if="actor.character" class="actor-character">{{ actor.character }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Watch Providers -->
+            <div v-if="hasProviders" class="providers-section">
+              <h3 class="section-title">Где посмотреть</h3>
+              <div v-if="watchProviders.flatrate && watchProviders.flatrate.length > 0" class="provider-group">
+                <span class="provider-type">Подписка:</span>
+                <div class="providers-list">
+                  <div
+                    v-for="provider in watchProviders.flatrate"
+                    :key="provider.id"
+                    class="provider-item"
+                    :title="provider.name"
+                  >
+                    <img
+                      :src="getProviderLogoUrl(provider.logo, 'medium')"
+                      :alt="provider.name"
+                      class="provider-logo"
+                    />
+                    <span class="provider-name">{{ provider.name }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="watchProviders.rent && watchProviders.rent.length > 0" class="provider-group">
+                <span class="provider-type">Аренда:</span>
+                <div class="providers-list">
+                  <div
+                    v-for="provider in watchProviders.rent"
+                    :key="provider.id"
+                    class="provider-item"
+                    :title="provider.name"
+                  >
+                    <img
+                      :src="getProviderLogoUrl(provider.logo, 'medium')"
+                      :alt="provider.name"
+                      class="provider-logo"
+                    />
+                    <span class="provider-name">{{ provider.name }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="watchProviders.buy && watchProviders.buy.length > 0" class="provider-group">
+                <span class="provider-type">Покупка:</span>
+                <div class="providers-list">
+                  <div
+                    v-for="provider in watchProviders.buy"
+                    :key="provider.id"
+                    class="provider-item"
+                    :title="provider.name"
+                  >
+                    <img
+                      :src="getProviderLogoUrl(provider.logo, 'medium')"
+                      :alt="provider.name"
+                      class="provider-logo"
+                    />
+                    <span class="provider-name">{{ provider.name }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -574,6 +644,58 @@ onUnmounted(() => {
   border-radius: 20px;
   font-size: 0.8rem;
   color: var(--text-secondary);
+}
+
+.providers-section {
+  margin-bottom: 1.5rem;
+}
+
+.provider-group {
+  margin-bottom: 1rem;
+}
+
+.provider-type {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.providers-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.provider-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  transition: all 0.2s;
+}
+
+.provider-item:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.provider-logo {
+  height: 24px;
+  width: auto;
+  border-radius: 4px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px;
+}
+
+.provider-name {
+  font-size: 0.85rem;
+  color: var(--text-primary);
 }
 
 @media (max-width: 768px) {
