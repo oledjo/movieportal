@@ -24,6 +24,8 @@ const sortBy = ref('default')
 const minRating = ref(0)
 const movieType = ref('all') // 'all', 'movie', 'series'
 const selectedProvider = ref('all') // Filter by streaming platform
+const minDuration = ref(0) // Minimum duration in minutes
+const maxDuration = ref(300) // Maximum duration in minutes (5 hours)
 
 // API Keys from localStorage
 const todoistToken = ref(localStorage.getItem('todoist_token') || '')
@@ -32,11 +34,40 @@ const tmdbApiKey = ref(localStorage.getItem('tmdb_api_key') || '')
 // Available sections for filter
 const availableSections = computed(() => {
   const sections = new Set(movies.value.map(m => m.sectionId))
-  return [
+  const sectionList = [
+    { id: 'all', name: 'Все' }
+  ]
+  
+  // Add sections from movies
+  Array.from(sections).forEach(id => {
+    const name = SECTION_NAMES[id]
+    if (name) {
+      sectionList.push({ id, name })
+    } else {
+      // If section name not found in constants, try to get from actual sections
+      // or use sectionId as fallback
+      const movie = movies.value.find(m => m.sectionId === id)
+      if (movie && movie.sectionName && movie.sectionName !== 'Другое') {
+        sectionList.push({ id, name: movie.sectionName })
+      }
+    }
+  })
+  
+  // Remove duplicates by id
+  const uniqueSections = []
+  const seenIds = new Set()
+  sectionList.forEach(sec => {
+    if (!seenIds.has(sec.id)) {
+      seenIds.add(sec.id)
+      uniqueSections.push(sec)
+    }
+  })
+  
+  return uniqueSections.length > 1 ? uniqueSections : [
     { id: 'all', name: 'Все' },
-    ...Array.from(sections)
-      .filter(id => SECTION_NAMES[id])
-      .map(id => ({ id, name: SECTION_NAMES[id] }))
+    { id: '65CW5hwj3GQG3PCF', name: 'Фильмы' },
+    { id: '65CVq4gf6VxMW5jm', name: 'Сериалы' },
+    { id: '6W4Gvr7pfmMVpJ2m', name: 'Смотрю сейчас' }
   ]
 })
 
@@ -374,6 +405,8 @@ onMounted(() => {
           v-model:minRating="minRating"
           v-model:movieType="movieType"
           v-model:provider="selectedProvider"
+          v-model:minDuration="minDuration"
+          v-model:maxDuration="maxDuration"
           :sections="availableSections"
           :providers="availableProviders"
         />
