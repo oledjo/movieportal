@@ -85,9 +85,9 @@ const countries = computed(() => {
   return countries.map(c => c.name).join(', ')
 })
 
-// Allowed provider IDs (Netflix + HBO + Amazon + Russian platforms)
-const ALLOWED_PROVIDER_IDS = new Set([8, 384, 9, 283, 115, 111, 113, 507, 501, 502, 117, 119, 420, 425])
-const ALLOWED_PROVIDER_NAMES = ['netflix', 'hbo', 'amazon', 'prime video', 'кинопоиск', 'okko', 'ivi', 'premier', 'megogo', 'wink', 'more.tv', 'amedia', 'amediateka']
+// Allowed provider IDs (Netflix + Russian platforms)
+const ALLOWED_PROVIDER_IDS = new Set([8, 283, 115, 111, 113, 507, 501, 502, 117, 119, 420, 425])
+const ALLOWED_PROVIDER_NAMES = ['netflix', 'кинопоиск', 'okko', 'ivi', 'premier', 'megogo', 'wink', 'more.tv', 'amedia', 'amediateka']
 
 function isProviderAllowed(provider) {
   if (ALLOWED_PROVIDER_IDS.has(provider.id)) return true
