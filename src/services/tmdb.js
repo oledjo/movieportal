@@ -614,65 +614,75 @@ export function getBackdropUrl(backdropPath, size = 'original') {
 }
 
 /**
- * Batch search multiple movies
+ * Batch search multiple movies with parallel processing for speed
  */
 export async function batchSearchMovies(movies, apiKey, onProgress = null, fetchDetails = true) {
   const results = new Map()
   let completed = 0
+  
+  // Process movies in parallel batches to speed up loading
+  // Batch size: 5 movies at a time (balance between speed and rate limits)
+  const BATCH_SIZE = 5
+  const batches = []
+  
+  for (let i = 0; i < movies.length; i += BATCH_SIZE) {
+    batches.push(movies.slice(i, i + BATCH_SIZE))
+  }
 
-  for (const movie of movies) {
-    // Use isSeries flag from movie data (already determined correctly in todoist.js)
-    // isSeries is set based on:
-    // - Section ID (Сериалы or Смотрю сейчас)
-    // - Presence of subtasks (episodes)
-    // So we can trust this flag
-    const isTV = movie.isSeries || false
+  console.log(`TMDB: Processing ${movies.length} movies in ${batches.length} parallel batches`)
 
-    console.log(`Searching poster for: "${movie.title}" (year: ${movie.year || 'none'}, isTV: ${isTV}, section: ${movie.sectionName}, hasSubtasks: ${movie.episodes ? 'yes' : 'no'})`)
+  for (const batch of batches) {
+    // Process batch in parallel
+    const batchPromises = batch.map(async (movie) => {
+      const isTV = movie.isSeries || false
+
+      let searchResult
+      try {
+        searchResult = await searchMovie(movie.title, apiKey, movie.year, isTV)
+      } catch (error) {
+        console.error(`TMDB: Error searching for "${movie.title}":`, error)
+        searchResult = null
+      }
+
+      if (searchResult && fetchDetails) {
+        // Fetch details and providers in parallel (faster!)
+        const [details, providers] = await Promise.all([
+          fetchMovieDetails(searchResult.id, apiKey, searchResult.isTV),
+          fetchWatchProviders(searchResult.id, apiKey, searchResult.isTV)
+        ])
+        
+        if (details) {
+          Object.assign(searchResult, { details })
+        }
+        if (providers) {
+          searchResult.watchProviders = providers
+        }
+      }
+
+      return { movieId: movie.id, result: searchResult }
+    })
+
+    // Wait for batch to complete
+    const batchResults = await Promise.all(batchPromises)
     
-    let searchResult
-    try {
-      searchResult = await searchMovie(movie.title, apiKey, movie.year, isTV)
-    } catch (error) {
-      console.error(`TMDB: Error searching for "${movie.title}":`, error)
-      // Continue with next movie instead of failing entire batch
-      searchResult = null
-    }
-
-    if (searchResult && fetchDetails) {
-      // Fetch additional details (genres, cast, etc.)
-      const details = await fetchMovieDetails(searchResult.id, apiKey, searchResult.isTV)
-      if (details) {
-        Object.assign(searchResult, { details })
+    // Store results and update progress
+    batchResults.forEach(({ movieId, result }) => {
+      results.set(movieId, result)
+      completed++
+      if (onProgress) {
+        onProgress(completed, movies.length)
       }
-      
-      // Fetch watch providers (streaming platforms) from multiple countries
-      const providers = await fetchWatchProviders(searchResult.id, apiKey, searchResult.isTV)
-      if (providers) {
-        searchResult.watchProviders = providers
-      }
-      
-      // Small extra delay for details request
-      await new Promise(resolve => setTimeout(resolve, 50))
-    }
+    })
 
-    results.set(movie.id, searchResult)
-
-    completed++
-    if (onProgress) {
-      onProgress(completed, movies.length)
-    }
-
-    // Small delay to avoid rate limiting (only if not from cache and not null)
-    if (searchResult && searchResult._fromCache !== true) {
+    // Small delay between batches to avoid rate limiting (only if not all from cache)
+    const hasNonCached = batchResults.some(({ result }) => result && result._fromCache !== true)
+    if (hasNonCached && batch !== batches[batches.length - 1]) {
+      // Reduced delay: 100ms between batches instead of 100ms per movie
       await new Promise(resolve => setTimeout(resolve, 100))
-    } else if (!searchResult) {
-      // Even for null results, small delay to avoid hammering API
-      await new Promise(resolve => setTimeout(resolve, 50))
     }
   }
 
-  // Final save of cache after batch is complete (flush debounced saves)
+  // Final save of cache after batch is complete
   if (saveCacheTimeout) {
     clearTimeout(saveCacheTimeout)
     saveCacheTimeout = null
