@@ -117,6 +117,13 @@ const hasProviders = computed(() => {
   return (p.flatrate?.length || 0) + (p.rent?.length || 0) + (p.buy?.length || 0) > 0
 })
 
+const kinopoiskUrl = computed(() => {
+  const query = props.movie.year
+    ? `${props.movie.title} ${props.movie.year}`
+    : props.movie.title
+  return `https://www.kinopoisk.ru/index.php?kp_query=${encodeURIComponent(query)}`
+})
+
 // Handle escape key
 function handleKeydown(e) {
   if (e.key === 'Escape') {
@@ -174,12 +181,28 @@ onUnmounted(() => {
           <div class="info-section">
             <div class="title-row">
               <h2 class="title">{{ movie.title }}</h2>
-              <button class="watched-btn" @click="emit('watched', movie)" title="Отметить как просмотренное">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                Просмотрено
-              </button>
+              <div class="title-actions">
+                <a
+                  :href="kinopoiskUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="kinopoisk-btn"
+                  title="Открыть в Кинопоиске"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                  </svg>
+                  Кинопоиск
+                </a>
+                <button class="watched-btn" @click="emit('watched', movie)" title="Отметить как просмотренное">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  Просмотрено
+                </button>
+              </div>
             </div>
 
             <!-- Meta -->
@@ -516,6 +539,38 @@ onUnmounted(() => {
   flex: 1;
 }
 
+.title-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.kinopoisk-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: #ff6600;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.kinopoisk-btn:hover {
+  background: #e65c00;
+  transform: scale(1.02);
+}
+
+.kinopoisk-btn svg {
+  flex-shrink: 0;
+}
+
 .watched-btn {
   display: flex;
   align-items: center;
@@ -797,6 +852,12 @@ onUnmounted(() => {
     text-align: center;
   }
 
+  .title-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .kinopoisk-btn,
   .watched-btn {
     width: 100%;
     justify-content: center;
