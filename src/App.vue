@@ -213,6 +213,26 @@ const filteredMovies = computed(() => {
     })
   }
 
+  // Duration filter
+  if (minDuration.value > 0 || maxDuration.value < 300) {
+    result = result.filter(m => {
+      // Get duration from movie data or TMDB
+      let duration = m.duration
+      
+      // If no duration in movie data, try TMDB
+      if (!duration || duration === 0) {
+        const tmdbData = getMovieTmdbData(m.id)
+        duration = tmdbData?.details?.runtime || null
+      }
+      
+      // If still no duration available, include it (don't filter out)
+      if (!duration || duration === 0) return true
+      
+      // Check if duration is within range
+      return duration >= minDuration.value && duration <= maxDuration.value
+    })
+  }
+
   // Sorting
   switch (sortBy.value) {
     case 'rating-desc':
