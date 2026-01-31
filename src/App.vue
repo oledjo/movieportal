@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchMovies, SECTIONS, SECTION_NAMES } from './services/todoist.js'
+import { fetchMovies, completeTask, createTask, SECTIONS, SECTION_NAMES } from './services/todoist.js'
 import { batchSearchMovies, getPosterUrl, clearTmdbCache, saveCacheToStorage } from './services/tmdb.js'
 import MovieCard from './components/MovieCard.vue'
 import MovieModal from './components/MovieModal.vue'
@@ -380,6 +380,33 @@ function closeMovie() {
   selectedMovie.value = null
 }
 
+// Mark movie as watched
+async function handleWatched(movie) {
+  if (!todoistToken.value) {
+    alert('Для отметки просмотра нужен Todoist API токен')
+    return
+  }
+
+  try {
+    // Complete the task in Todoist
+    await completeTask(todoistToken.value, movie.id)
+
+    // Create a new task to write a review
+    await createTask(todoistToken.value, `Написать отзыв на фильм «${movie.title}»`)
+
+    // Remove movie from local list
+    movies.value = movies.value.filter(m => m.id !== movie.id)
+
+    // Close modal if this movie was open
+    if (selectedMovie.value && selectedMovie.value.id === movie.id) {
+      selectedMovie.value = null
+    }
+  } catch (e) {
+    console.error('Error marking movie as watched:', e)
+    alert('Ошибка при отметке просмотра: ' + e.message)
+  }
+}
+
 // Reload posters (clear cache and reload)
 async function reloadPosters() {
   if (!tmdbApiKey.value) {
@@ -497,6 +524,7 @@ onMounted(() => {
             :poster="getMoviePoster(movie.id)"
             :tmdb="getMovieTmdbData(movie.id)"
             @click="openMovie(movie)"
+            @watched="handleWatched"
           />
         </div>
 
@@ -515,6 +543,7 @@ onMounted(() => {
       v-if="selectedMovie"
       :movie="selectedMovie"
       @close="closeMovie"
+      @watched="handleWatched"
     />
 
     <!-- Settings modal -->

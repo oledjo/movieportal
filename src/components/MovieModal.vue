@@ -9,7 +9,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'watched'])
 
 const rating = computed(() => props.movie.kinopoiskRating || props.movie.imdbRating || null)
 
@@ -172,7 +172,15 @@ onUnmounted(() => {
 
           <!-- Info -->
           <div class="info-section">
-            <h2 class="title">{{ movie.title }}</h2>
+            <div class="title-row">
+              <h2 class="title">{{ movie.title }}</h2>
+              <button class="watched-btn" @click="emit('watched', movie)" title="Отметить как просмотренное">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                Просмотрено
+              </button>
+            </div>
 
             <!-- Meta -->
             <div class="meta">
@@ -493,11 +501,45 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
 .title {
   font-size: 1.75rem;
   font-weight: 700;
-  margin-bottom: 1rem;
   line-height: 1.3;
+  flex: 1;
+}
+
+.watched-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: #4ade80;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.watched-btn:hover {
+  background: #22c55e;
+  transform: scale(1.02);
+}
+
+.watched-btn svg {
+  flex-shrink: 0;
 }
 
 .meta {
@@ -744,9 +786,20 @@ onUnmounted(() => {
     width: 150px;
   }
 
+  .title-row {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
   .title {
     font-size: 1.5rem;
     text-align: center;
+  }
+
+  .watched-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .meta {
