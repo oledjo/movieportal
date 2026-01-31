@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { fetchMovies, SECTIONS, SECTION_NAMES } from './services/todoist.js'
-import { batchSearchMovies, getPosterUrl, clearTmdbCache } from './services/tmdb.js'
+import { batchSearchMovies, getPosterUrl, clearTmdbCache, saveCacheToStorage } from './services/tmdb.js'
 import MovieCard from './components/MovieCard.vue'
 import MovieModal from './components/MovieModal.vue'
 import FilterBar from './components/FilterBar.vue'
@@ -321,7 +321,8 @@ async function loadPosters() {
       tmdbApiKey.value,
       (current, total) => {
         postersProgress.value = { current, total }
-      }
+      },
+      true // Fetch details (now optimized with parallel batches)
     )
     posters.value = results
 

@@ -75,7 +75,7 @@ function loadCacheFromStorage() {
 /**
  * Save cache to localStorage
  */
-function saveCacheToStorage() {
+export function saveCacheToStorage() {
   try {
     const cacheData = {}
     cache.forEach((value, key) => {
