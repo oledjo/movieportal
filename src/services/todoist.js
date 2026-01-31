@@ -229,6 +229,54 @@ export async function fetchMovies(apiToken) {
 }
 
 /**
+ * Complete (close) a task in Todoist
+ */
+export async function completeTask(apiToken, taskId) {
+  if (!apiToken) {
+    throw new Error('Todoist API token is required')
+  }
+
+  const response = await fetch(`${TODOIST_API_URL}/tasks/${taskId}/close`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiToken}`
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error(`Todoist API error: ${response.status}`)
+  }
+
+  return true
+}
+
+/**
+ * Create a new task in Todoist Inbox
+ */
+export async function createTask(apiToken, content) {
+  if (!apiToken) {
+    throw new Error('Todoist API token is required')
+  }
+
+  const response = await fetch(`${TODOIST_API_URL}/tasks`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      content: content
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error(`Todoist API error: ${response.status}`)
+  }
+
+  return await response.json()
+}
+
+/**
  * Get sections info
  */
 export async function fetchSections(apiToken) {

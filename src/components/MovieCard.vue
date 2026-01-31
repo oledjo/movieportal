@@ -17,7 +17,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['click'])
+const emit = defineEmits(['click', 'watched'])
 
 const rating = computed(() => {
   return props.movie.kinopoiskRating || props.movie.imdbRating || null
@@ -182,6 +182,12 @@ const watchProviders = computed(() => {
       <div class="overlay">
         <div class="overlay-content">
           <span class="view-details">Подробнее</span>
+          <button class="watched-btn" @click.stop="emit('watched', movie)" title="Отметить как просмотренное">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Просмотрено
+          </button>
         </div>
       </div>
 
@@ -343,6 +349,32 @@ const watchProviders = computed(() => {
   border-radius: 20px;
   font-size: 0.85rem;
   font-weight: 500;
+}
+
+.watched-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: #4ade80;
+  color: #000;
+  border: none;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 0.5rem;
+}
+
+.watched-btn:hover {
+  background: #22c55e;
+  transform: scale(1.05);
+}
+
+.watched-btn svg {
+  flex-shrink: 0;
 }
 
 .badges {
