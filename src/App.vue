@@ -119,19 +119,48 @@ const filteredMovies = computed(() => {
     })
   }
 
+  // Helper function to get movie rating
+  function getMovieRating(movie) {
+    // Priority: Kinopoisk > IMDb > TMDB (converted to 10-point scale)
+    if (movie.kinopoiskRating) return movie.kinopoiskRating
+    if (movie.imdbRating) return movie.imdbRating
+    const tmdbData = getMovieTmdbData(movie.id)
+    if (tmdbData?.voteAverage) {
+      // TMDB uses 0-10 scale, same as our ratings
+      return tmdbData.voteAverage
+    }
+    return 0
+  }
+
   // Sorting
   switch (sortBy.value) {
     case 'rating-desc':
       result.sort((a, b) => {
-        const ratingA = a.kinopoiskRating || a.imdbRating || 0
-        const ratingB = b.kinopoiskRating || b.imdbRating || 0
+        const ratingA = getMovieRating(a)
+        const ratingB = getMovieRating(b)
+        
+        // If both have 0 rating, keep original order
+        if (ratingA === 0 && ratingB === 0) return 0
+        
+        // Movies without rating go to the end
+        if (ratingA === 0) return 1
+        if (ratingB === 0) return -1
+        
         return ratingB - ratingA
       })
       break
     case 'rating-asc':
       result.sort((a, b) => {
-        const ratingA = a.kinopoiskRating || a.imdbRating || 0
-        const ratingB = b.kinopoiskRating || b.imdbRating || 0
+        const ratingA = getMovieRating(a)
+        const ratingB = getMovieRating(b)
+        
+        // If both have 0 rating, keep original order
+        if (ratingA === 0 && ratingB === 0) return 0
+        
+        // Movies without rating go to the end
+        if (ratingA === 0) return 1
+        if (ratingB === 0) return -1
+        
         return ratingA - ratingB
       })
       break
