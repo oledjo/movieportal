@@ -66,6 +66,19 @@ const availableProviders = computed(() => {
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
 })
 
+// Helper function to get movie rating (outside computed for reuse)
+function getMovieRating(movie) {
+  // Priority: Kinopoisk > IMDb > TMDB
+  if (movie.kinopoiskRating) return movie.kinopoiskRating
+  if (movie.imdbRating) return movie.imdbRating
+  const tmdbData = getMovieTmdbData(movie.id)
+  if (tmdbData?.voteAverage) {
+    // TMDB uses 0-10 scale, same as our ratings
+    return tmdbData.voteAverage
+  }
+  return null // Use null instead of 0 to distinguish "no rating" from "rating is 0"
+}
+
 // Filtered and sorted movies
 const filteredMovies = computed(() => {
   let result = [...movies.value]
@@ -114,22 +127,9 @@ const filteredMovies = computed(() => {
   // Rating filter
   if (minRating.value > 0) {
     result = result.filter(m => {
-      const rating = m.kinopoiskRating || m.imdbRating || 0
-      return rating >= minRating.value
+      const rating = getMovieRating(m)
+      return rating !== null && rating >= minRating.value
     })
-  }
-
-  // Helper function to get movie rating
-  function getMovieRating(movie) {
-    // Priority: Kinopoisk > IMDb > TMDB (converted to 10-point scale)
-    if (movie.kinopoiskRating) return movie.kinopoiskRating
-    if (movie.imdbRating) return movie.imdbRating
-    const tmdbData = getMovieTmdbData(movie.id)
-    if (tmdbData?.voteAverage) {
-      // TMDB uses 0-10 scale, same as our ratings
-      return tmdbData.voteAverage
-    }
-    return 0
   }
 
   // Sorting
@@ -139,13 +139,14 @@ const filteredMovies = computed(() => {
         const ratingA = getMovieRating(a)
         const ratingB = getMovieRating(b)
         
-        // If both have 0 rating, keep original order
-        if (ratingA === 0 && ratingB === 0) return 0
+        // Both have no rating - keep original order
+        if (ratingA === null && ratingB === null) return 0
         
         // Movies without rating go to the end
-        if (ratingA === 0) return 1
-        if (ratingB === 0) return -1
+        if (ratingA === null) return 1
+        if (ratingB === null) return -1
         
+        // Sort by rating descending
         return ratingB - ratingA
       })
       break
@@ -154,13 +155,14 @@ const filteredMovies = computed(() => {
         const ratingA = getMovieRating(a)
         const ratingB = getMovieRating(b)
         
-        // If both have 0 rating, keep original order
-        if (ratingA === 0 && ratingB === 0) return 0
+        // Both have no rating - keep original order
+        if (ratingA === null && ratingB === null) return 0
         
         // Movies without rating go to the end
-        if (ratingA === 0) return 1
-        if (ratingB === 0) return -1
+        if (ratingA === null) return 1
+        if (ratingB === null) return -1
         
+        // Sort by rating ascending
         return ratingA - ratingB
       })
       break
