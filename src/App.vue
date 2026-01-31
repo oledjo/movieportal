@@ -71,10 +71,12 @@ const availableSections = computed(() => {
   ]
 })
 
-// Allowed provider IDs (Netflix + Russian platforms)
-// Netflix: 8, Кинопоиск HD: 283, Okko: 115, Ivi: 111, Premier: 113, Megogo: 507, Wink: 501, more.tv: 502
+// Allowed provider IDs (Netflix + HBO + Amazon + Russian platforms)
+// Netflix: 8, HBO Max: 384, Amazon Prime Video: 9, Кинопоиск HD: 283, Okko: 115, Ivi: 111, Premier: 113, Megogo: 507, Wink: 501, more.tv: 502
 const ALLOWED_PROVIDER_IDS = new Set([
   8,    // Netflix
+  384,  // HBO Max
+  9,    // Amazon Prime Video
   283,  // Кинопоиск HD
   115,  // Okko
   111,  // Ivi
@@ -91,6 +93,9 @@ const ALLOWED_PROVIDER_IDS = new Set([
 // Allowed provider names (for fallback matching)
 const ALLOWED_PROVIDER_NAMES = [
   'netflix',
+  'hbo',
+  'amazon',
+  'prime video',
   'кинопоиск',
   'okko',
   'ivi',
@@ -137,14 +142,9 @@ const availableProviders = computed(() => {
     })
   })
   
-  // Sort by name and return as array
+  // Sort by name alphabetically
   return Array.from(providerMap.values())
-    .sort((a, b) => {
-      // Netflix first, then alphabetically
-      if (a.name.toLowerCase().includes('netflix')) return -1
-      if (b.name.toLowerCase().includes('netflix')) return 1
-      return a.name.localeCompare(b.name, 'ru')
-    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
 })
 
 // Helper function to get movie rating (outside computed for reuse)
