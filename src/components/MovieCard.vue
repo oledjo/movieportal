@@ -137,14 +137,14 @@ function isProviderAllowed(provider) {
 const watchProviders = computed(() => {
   const providers = props.tmdb?.watchProviders
   if (!providers) return []
-  
+
   // Combine all providers (flatrate, rent, buy) and deduplicate by ID
   const allProviders = [
     ...(providers.flatrate || []),
     ...(providers.rent || []),
     ...(providers.buy || [])
   ]
-  
+
   // Filter only allowed providers and remove duplicates
   const uniqueProviders = []
   const seenIds = new Set()
@@ -154,12 +154,19 @@ const watchProviders = computed(() => {
       uniqueProviders.push(provider)
     }
   }
-  
+
   // Sort alphabetically
   uniqueProviders.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
-  
+
   // Limit to 4 providers for card display
   return uniqueProviders.slice(0, 4)
+})
+
+const kinopoiskUrl = computed(() => {
+  const query = props.movie.year
+    ? `${props.movie.title} ${props.movie.year}`
+    : props.movie.title
+  return `https://www.kinopoisk.ru/index.php?kp_query=${encodeURIComponent(query)}`
 })
 </script>
 
@@ -182,12 +189,29 @@ const watchProviders = computed(() => {
       <div class="overlay">
         <div class="overlay-content">
           <span class="view-details">Подробнее</span>
-          <button class="watched-btn" @click.stop="emit('watched', movie)" title="Отметить как просмотренное">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-            Просмотрено
-          </button>
+          <div class="overlay-buttons">
+            <a
+              :href="kinopoiskUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="kinopoisk-btn"
+              @click.stop
+              title="Открыть в Кинопоиске"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+              Кинопоиск
+            </a>
+            <button class="watched-btn" @click.stop="emit('watched', movie)" title="Отметить как просмотренное">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Просмотрено
+            </button>
+          </div>
         </div>
       </div>
 
@@ -351,6 +375,39 @@ const watchProviders = computed(() => {
   font-weight: 500;
 }
 
+.overlay-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.kinopoisk-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: #ff6600;
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.kinopoisk-btn:hover {
+  background: #e65c00;
+  transform: scale(1.05);
+}
+
+.kinopoisk-btn svg {
+  flex-shrink: 0;
+}
+
 .watched-btn {
   display: flex;
   align-items: center;
@@ -365,7 +422,6 @@ const watchProviders = computed(() => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  margin-top: 0.5rem;
 }
 
 .watched-btn:hover {
