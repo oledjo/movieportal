@@ -449,11 +449,12 @@ export async function searchMovie(title, apiKey, year = null, isTV = false) {
 
 /**
  * Fetch watch providers (streaming platforms) for a movie/TV
+ * Fetches from multiple countries and combines results
  */
-export async function fetchWatchProviders(tmdbId, apiKey, isTV = false, country = 'RU') {
+export async function fetchWatchProviders(tmdbId, apiKey, isTV = false) {
   if (!apiKey || !tmdbId) return null
 
-  const cacheKey = `providers-${tmdbId}-${isTV}-${country}`
+  const cacheKey = `providers-${tmdbId}-${isTV}-multi`
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey)
   }
@@ -466,26 +467,71 @@ export async function fetchWatchProviders(tmdbId, apiKey, isTV = false, country 
     if (!response.ok) return null
 
     const data = await response.json()
-    const providers = data.results?.[country] || null
-
-    if (providers) {
-      const providerData = {
-        flatrate: (providers.flatrate || []).map(p => ({
-          id: p.provider_id,
-          name: p.provider_name,
-          logo: p.logo_path
-        })),
-        rent: (providers.rent || []).map(p => ({
-          id: p.provider_id,
-          name: p.provider_name,
-          logo: p.logo_path
-        })),
-        buy: (providers.buy || []).map(p => ({
-          id: p.provider_id,
-          name: p.provider_name,
-          logo: p.logo_path
-        }))
+    
+    // Countries to check (priority order)
+    const countries = ['RU', 'US', 'GB', 'DE', 'FR']
+    
+    // Combine providers from multiple countries
+    const combinedProviders = {
+      flatrate: new Map(), // Use Map to deduplicate by provider ID
+      rent: new Map(),
+      buy: new Map()
+    }
+    
+    // Process each country
+    for (const country of countries) {
+      const providers = data.results?.[country]
+      if (!providers) continue
+      
+      // Add flatrate providers
+      if (providers.flatrate) {
+        providers.flatrate.forEach(p => {
+          if (!combinedProviders.flatrate.has(p.provider_id)) {
+            combinedProviders.flatrate.set(p.provider_id, {
+              id: p.provider_id,
+              name: p.provider_name,
+              logo: p.logo_path
+            })
+          }
+        })
       }
+      
+      // Add rent providers
+      if (providers.rent) {
+        providers.rent.forEach(p => {
+          if (!combinedProviders.rent.has(p.provider_id)) {
+            combinedProviders.rent.set(p.provider_id, {
+              id: p.provider_id,
+              name: p.provider_name,
+              logo: p.logo_path
+            })
+          }
+        })
+      }
+      
+      // Add buy providers
+      if (providers.buy) {
+        providers.buy.forEach(p => {
+          if (!combinedProviders.buy.has(p.provider_id)) {
+            combinedProviders.buy.set(p.provider_id, {
+              id: p.provider_id,
+              name: p.provider_name,
+              logo: p.logo_path
+            })
+          }
+        })
+      }
+    }
+    
+    // Convert Maps to Arrays
+    const providerData = {
+      flatrate: Array.from(combinedProviders.flatrate.values()),
+      rent: Array.from(combinedProviders.rent.values()),
+      buy: Array.from(combinedProviders.buy.values())
+    }
+    
+    // Only cache if we have at least one provider
+    if (providerData.flatrate.length > 0 || providerData.rent.length > 0 || providerData.buy.length > 0) {
       cache.set(cacheKey, providerData)
       return providerData
     }
@@ -600,8 +646,8 @@ export async function batchSearchMovies(movies, apiKey, onProgress = null, fetch
         Object.assign(searchResult, { details })
       }
       
-      // Fetch watch providers (streaming platforms)
-      const providers = await fetchWatchProviders(searchResult.id, apiKey, searchResult.isTV, 'RU')
+      // Fetch watch providers (streaming platforms) from multiple countries
+      const providers = await fetchWatchProviders(searchResult.id, apiKey, searchResult.isTV)
       if (providers) {
         searchResult.watchProviders = providers
       }
