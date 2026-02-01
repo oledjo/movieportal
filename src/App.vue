@@ -29,10 +29,11 @@ const movieType = ref(savedFilters.movieType || 'all') // 'all', 'movie', 'serie
 const selectedProvider = ref(savedFilters.selectedProvider || 'all') // Filter by streaming platform
 const minDuration = ref(savedFilters.minDuration || 0) // Minimum duration in minutes
 const maxDuration = ref(savedFilters.maxDuration ?? 300) // Maximum duration in minutes (5 hours)
+const scheduledFilter = ref(savedFilters.scheduledFilter || 'all') // 'all', 'scheduled', 'not-scheduled'
 
 // Save filters to localStorage when they change
 watch(
-  [searchQuery, selectedSection, sortBy, minRating, movieType, selectedProvider, minDuration, maxDuration],
+  [searchQuery, selectedSection, sortBy, minRating, movieType, selectedProvider, minDuration, maxDuration, scheduledFilter],
   () => {
     localStorage.setItem('movie_filters', JSON.stringify({
       searchQuery: searchQuery.value,
@@ -42,7 +43,8 @@ watch(
       movieType: movieType.value,
       selectedProvider: selectedProvider.value,
       minDuration: minDuration.value,
-      maxDuration: maxDuration.value
+      maxDuration: maxDuration.value,
+      scheduledFilter: scheduledFilter.value
     }))
   }
 )
@@ -240,6 +242,13 @@ const filteredMovies = computed(() => {
       // Check if duration is within range
       return duration >= minDuration.value && duration <= maxDuration.value
     })
+  }
+
+  // Scheduled filter
+  if (scheduledFilter.value === 'scheduled') {
+    result = result.filter(m => m.dueDate)
+  } else if (scheduledFilter.value === 'not-scheduled') {
+    result = result.filter(m => !m.dueDate)
   }
 
   // Sorting
@@ -545,6 +554,7 @@ onMounted(() => {
           v-model:provider="selectedProvider"
           v-model:minDuration="minDuration"
           v-model:maxDuration="maxDuration"
+          v-model:scheduledFilter="scheduledFilter"
           :sections="availableSections"
           :providers="availableProviders"
         />
