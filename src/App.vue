@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchMovies, completeTask, createTask, SECTIONS, SECTION_NAMES } from './services/todoist.js'
+import { fetchMovies, completeTask, createTask, updateTaskDueDate, SECTIONS, SECTION_NAMES } from './services/todoist.js'
 import { batchSearchMovies, getPosterUrl, clearTmdbCache, saveCacheToStorage } from './services/tmdb.js'
 import MovieCard from './components/MovieCard.vue'
 import MovieModal from './components/MovieModal.vue'
@@ -407,6 +407,33 @@ async function handleWatched(movie) {
   }
 }
 
+// Schedule movie viewing date
+async function handleSchedule({ movie, date }) {
+  if (!todoistToken.value) {
+    alert('Для планирования нужен Todoist API токен')
+    return
+  }
+
+  try {
+    // Update due date in Todoist
+    await updateTaskDueDate(todoistToken.value, movie.id, date)
+
+    // Update local movie data
+    const movieIndex = movies.value.findIndex(m => m.id === movie.id)
+    if (movieIndex !== -1) {
+      movies.value[movieIndex].dueDate = date
+    }
+
+    // Update selected movie if open
+    if (selectedMovie.value && selectedMovie.value.id === movie.id) {
+      selectedMovie.value = { ...selectedMovie.value, dueDate: date }
+    }
+  } catch (e) {
+    console.error('Error scheduling movie:', e)
+    alert('Ошибка при планировании: ' + e.message)
+  }
+}
+
 // Reload posters (clear cache and reload)
 async function reloadPosters() {
   if (!tmdbApiKey.value) {
@@ -525,6 +552,7 @@ onMounted(() => {
             :tmdb="getMovieTmdbData(movie.id)"
             @click="openMovie(movie)"
             @watched="handleWatched"
+            @schedule="handleSchedule"
           />
         </div>
 
@@ -544,6 +572,7 @@ onMounted(() => {
       :movie="selectedMovie"
       @close="closeMovie"
       @watched="handleWatched"
+      @schedule="handleSchedule"
     />
 
     <!-- Settings modal -->

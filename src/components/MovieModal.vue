@@ -9,7 +9,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'watched'])
+const emit = defineEmits(['close', 'watched', 'schedule'])
 
 const rating = computed(() => props.movie.kinopoiskRating || props.movie.imdbRating || null)
 
@@ -124,6 +124,34 @@ const kinopoiskUrl = computed(() => {
   return `https://www.kinopoisk.ru/index.php?kp_query=${encodeURIComponent(query)}`
 })
 
+const dueDateFormatted = computed(() => {
+  if (!props.movie.dueDate) return null
+  const date = new Date(props.movie.dueDate)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+
+  if (date.toDateString() === today.toDateString()) {
+    return 'Сегодня'
+  }
+  if (date.toDateString() === tomorrow.toDateString()) {
+    return 'Завтра'
+  }
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+})
+
+function handleScheduleClick(e) {
+  const btn = e.currentTarget
+  const hiddenInput = btn.querySelector('input[type="date"]')
+  if (hiddenInput) hiddenInput.showPicker()
+}
+
+function handleDateChange(e) {
+  const date = e.target.value
+  emit('schedule', { movie: props.movie, date: date || null })
+}
+
 // Handle escape key
 function handleKeydown(e) {
   if (e.key === 'Escape') {
@@ -196,6 +224,21 @@ onUnmounted(() => {
                   </svg>
                   Кинопоиск
                 </a>
+                <button class="schedule-btn" @click="handleScheduleClick" title="Запланировать просмотр">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
+                    <line x1="16" x2="16" y1="2" y2="6"></line>
+                    <line x1="8" x2="8" y1="2" y2="6"></line>
+                    <line x1="3" x2="21" y1="10" y2="10"></line>
+                  </svg>
+                  {{ dueDateFormatted || 'Запланировать' }}
+                  <input
+                    type="date"
+                    class="date-input"
+                    :value="movie.dueDate || ''"
+                    @change="handleDateChange"
+                  />
+                </button>
                 <button class="watched-btn" @click="emit('watched', movie)" title="Отметить как просмотренное">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
@@ -571,6 +614,42 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
+.schedule-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: #8b5cf6;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.schedule-btn:hover {
+  background: #7c3aed;
+  transform: scale(1.02);
+}
+
+.schedule-btn svg {
+  flex-shrink: 0;
+}
+
+.schedule-btn .date-input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+}
+
 .watched-btn {
   display: flex;
   align-items: center;
@@ -858,6 +937,7 @@ onUnmounted(() => {
   }
 
   .kinopoisk-btn,
+  .schedule-btn,
   .watched-btn {
     width: 100%;
     justify-content: center;

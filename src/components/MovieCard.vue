@@ -17,7 +17,40 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['click', 'watched'])
+const emit = defineEmits(['click', 'watched', 'schedule'])
+
+const dueDateFormatted = computed(() => {
+  if (!props.movie.dueDate) return null
+  const date = new Date(props.movie.dueDate)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+
+  if (date.toDateString() === today.toDateString()) {
+    return 'Сегодня'
+  }
+  if (date.toDateString() === tomorrow.toDateString()) {
+    return 'Завтра'
+  }
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+})
+
+function handleScheduleClick(e) {
+  e.stopPropagation()
+  const input = e.target.closest('.schedule-btn')?.querySelector('input') || e.target
+  if (input.tagName === 'INPUT') return
+  // Find the hidden input and click it
+  const btn = e.currentTarget
+  const hiddenInput = btn.querySelector('input[type="date"]')
+  if (hiddenInput) hiddenInput.showPicker()
+}
+
+function handleDateChange(e) {
+  e.stopPropagation()
+  const date = e.target.value
+  emit('schedule', { movie: props.movie, date: date || null })
+}
 
 const rating = computed(() => {
   return props.movie.kinopoiskRating || props.movie.imdbRating || null
@@ -205,6 +238,22 @@ const kinopoiskUrl = computed(() => {
               </svg>
               Кинопоиск
             </a>
+            <button class="schedule-btn" @click="handleScheduleClick" title="Запланировать просмотр">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
+                <line x1="16" x2="16" y1="2" y2="6"></line>
+                <line x1="8" x2="8" y1="2" y2="6"></line>
+                <line x1="3" x2="21" y1="10" y2="10"></line>
+              </svg>
+              {{ dueDateFormatted || 'Запланировать' }}
+              <input
+                type="date"
+                class="date-input"
+                :value="movie.dueDate || ''"
+                @change="handleDateChange"
+                @click.stop
+              />
+            </button>
             <button class="watched-btn" @click.stop="emit('watched', movie)" title="Отметить как просмотренное">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12"></polyline>
@@ -236,6 +285,17 @@ const kinopoiskUrl = computed(() => {
         {{ tmdbRating }}
       </div>
       
+      <!-- Due date badge -->
+      <div v-if="dueDateFormatted" class="due-date-badge" title="Запланировано">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
+          <line x1="16" x2="16" y1="2" y2="6"></line>
+          <line x1="8" x2="8" y1="2" y2="6"></line>
+          <line x1="3" x2="21" y1="10" y2="10"></line>
+        </svg>
+        {{ dueDateFormatted }}
+      </div>
+
       <!-- Reason indicator -->
       <div v-if="hasReason" class="reason-indicator" title="Есть описание">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -408,6 +468,42 @@ const kinopoiskUrl = computed(() => {
   flex-shrink: 0;
 }
 
+.schedule-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: #8b5cf6;
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.schedule-btn:hover {
+  background: #7c3aed;
+  transform: scale(1.05);
+}
+
+.schedule-btn svg {
+  flex-shrink: 0;
+}
+
+.schedule-btn .date-input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+}
+
 .watched-btn {
   display: flex;
   align-items: center;
@@ -478,6 +574,26 @@ const kinopoiskUrl = computed(() => {
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(4px);
+}
+
+.due-date-badge {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 0.75rem;
+  background: rgba(139, 92, 246, 0.9);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  backdrop-filter: blur(4px);
+}
+
+.due-date-badge svg {
+  flex-shrink: 0;
 }
 
 .info {
