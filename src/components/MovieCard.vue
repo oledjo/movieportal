@@ -65,9 +65,10 @@ const ratingColor = computed(() => {
 })
 
 const durationFormatted = computed(() => {
-  if (!props.movie.duration) return null
-  const hours = Math.floor(props.movie.duration / 60)
-  const minutes = props.movie.duration % 60
+  const mins = props.tmdb?.details?.runtime
+  if (!mins) return null
+  const hours = Math.floor(mins / 60)
+  const minutes = mins % 60
   if (hours > 0) {
     return minutes > 0 ? `${hours}ч ${minutes}м` : `${hours}ч`
   }
@@ -124,16 +125,6 @@ const genres = computed(() => {
   return genreList.slice(0, 3).map(g => g.name).join(', ') // Show up to 3 genres
 })
 
-const tmdbRuntime = computed(() => {
-  const mins = props.tmdb?.details?.runtime
-  if (!mins || props.movie.duration) return null
-  const hours = Math.floor(mins / 60)
-  const minutes = mins % 60
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}ч ${minutes}м` : `${hours}ч`
-  }
-  return `${minutes}м`
-})
 
 const tmdbRating = computed(() => {
   // Show TMDB rating only if we don't have Kinopoisk/IMDb rating
@@ -313,7 +304,7 @@ const kinopoiskUrl = computed(() => {
         <span v-if="country" class="country">{{ country }}</span>
         <span v-if="movie.director" class="director">{{ movie.director }}</span>
         <span v-if="seriesInfo" class="series-info">{{ seriesInfo }}</span>
-        <span v-else-if="durationFormatted || tmdbRuntime" class="duration">{{ durationFormatted || tmdbRuntime }}</span>
+        <span v-else-if="durationFormatted" class="duration">{{ durationFormatted }}</span>
       </div>
       <div v-if="genres" class="genres">{{ genres }}</div>
       

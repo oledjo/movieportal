@@ -39,7 +39,6 @@ export function parseMovieInfo(task, allTasks = [], actualSections = {}) {
     dueDate: task.due?.date || null,
     kinopoiskRating: null,
     imdbRating: null,
-    duration: null,
     reason: null,
     year: null,
     director: null,
@@ -143,18 +142,6 @@ export function parseMovieInfo(task, allTasks = [], actualSections = {}) {
     const imdbMatch = info.description.match(/(?:IMDb|на IMDb)[:\s]*(\d+\.?\d*)/i)
     if (imdbMatch) {
       info.imdbRating = parseFloat(imdbMatch[1])
-    }
-
-    // Duration (e.g., "2 ч 9 минут" or "45 минут" or "1 ч 38 минут")
-    const durationMatch = info.description.match(/(\d+)\s*ч(?:\s*(\d+)\s*мин)?|(\d+)\s*мин/i)
-    if (durationMatch) {
-      if (durationMatch[3]) {
-        info.duration = parseInt(durationMatch[3])
-      } else {
-        const hours = parseInt(durationMatch[1]) || 0
-        const minutes = parseInt(durationMatch[2]) || 0
-        info.duration = hours * 60 + minutes
-      }
     }
 
     // Extract reason (everything after ratings info, or the whole description if no ratings)

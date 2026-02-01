@@ -22,9 +22,10 @@ const ratingColor = computed(() => {
 })
 
 const durationFormatted = computed(() => {
-  if (!props.movie.duration) return null
-  const hours = Math.floor(props.movie.duration / 60)
-  const minutes = props.movie.duration % 60
+  const mins = props.movie.tmdb?.details?.runtime
+  if (!mins) return null
+  const hours = Math.floor(mins / 60)
+  const minutes = mins % 60
   if (hours > 0) {
     return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`
   }
@@ -69,16 +70,6 @@ const tmdbDirector = computed(() => {
   return props.movie.tmdb?.details?.director || null
 })
 
-const runtime = computed(() => {
-  const mins = props.movie.tmdb?.details?.runtime
-  if (!mins) return null
-  const hours = Math.floor(mins / 60)
-  const minutes = mins % 60
-  if (hours > 0) {
-    return minutes > 0 ? `${hours} ч ${minutes} мин` : `${hours} ч`
-  }
-  return `${minutes} мин`
-})
 
 const countries = computed(() => {
   const countries = props.movie.tmdb?.details?.productionCountries || []
@@ -289,13 +280,6 @@ onUnmounted(() => {
                   <rect x="2" y="6" width="14" height="12" rx="2"></rect>
                 </svg>
                 {{ movie.director || tmdbDirector }}
-              </span>
-              <span v-if="runtime && !movie.duration && !seriesInfo" class="meta-item">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                {{ runtime }}
               </span>
               <span v-if="countries" class="meta-item">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
