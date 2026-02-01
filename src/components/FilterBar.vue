@@ -10,11 +10,12 @@ const props = defineProps({
   provider: String,
   minDuration: Number,
   maxDuration: Number,
+  scheduledFilter: String,
   sections: Array,
   providers: Array
 })
 
-const emit = defineEmits(['update:search', 'update:section', 'update:sort', 'update:minRating', 'update:movieType', 'update:provider', 'update:minDuration', 'update:maxDuration'])
+const emit = defineEmits(['update:search', 'update:section', 'update:sort', 'update:minRating', 'update:movieType', 'update:provider', 'update:minDuration', 'update:maxDuration', 'update:scheduledFilter'])
 
 const sortOptions = [
   { value: 'default', label: 'По умолчанию' },
@@ -40,15 +41,22 @@ const movieTypeOptions = [
   { value: 'series', label: 'Сериалы' }
 ]
 
+const scheduledOptions = [
+  { value: 'all', label: 'Все' },
+  { value: 'scheduled', label: 'С датой' },
+  { value: 'not-scheduled', label: 'Без даты' }
+]
+
 const hasActiveFilters = computed(() => {
-  return props.search || 
-         props.section !== 'all' || 
-         props.minRating > 0 || 
-         props.sort !== 'default' || 
-         props.movieType !== 'all' || 
+  return props.search ||
+         props.section !== 'all' ||
+         props.minRating > 0 ||
+         props.sort !== 'default' ||
+         props.movieType !== 'all' ||
          props.provider !== 'all' ||
          props.minDuration > 0 ||
-         props.maxDuration < 300
+         props.maxDuration < 300 ||
+         props.scheduledFilter !== 'all'
 })
 
 function clearFilters() {
@@ -60,6 +68,7 @@ function clearFilters() {
   emit('update:provider', 'all')
   emit('update:minDuration', 0)
   emit('update:maxDuration', 300)
+  emit('update:scheduledFilter', 'all')
 }
 
 // Format duration for display
@@ -151,6 +160,24 @@ function formatDuration(minutes) {
         >
           <option
             v-for="opt in ratingOptions"
+            :key="opt.value"
+            :value="opt.value"
+          >
+            {{ opt.label }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Scheduled filter -->
+      <div class="filter-group">
+        <label class="filter-label">Дата</label>
+        <select
+          :value="scheduledFilter"
+          @change="emit('update:scheduledFilter', $event.target.value)"
+          class="filter-select"
+        >
+          <option
+            v-for="opt in scheduledOptions"
             :key="opt.value"
             :value="opt.value"
           >
