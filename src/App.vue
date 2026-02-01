@@ -17,15 +17,35 @@ const error = ref(null)
 const selectedMovie = ref(null)
 const showSettings = ref(false)
 
+// Load saved filters from localStorage
+const savedFilters = JSON.parse(localStorage.getItem('movie_filters') || '{}')
+
 // Filters
-const searchQuery = ref('')
-const selectedSection = ref('all')
-const sortBy = ref('default')
-const minRating = ref(0)
-const movieType = ref('all') // 'all', 'movie', 'series'
-const selectedProvider = ref('all') // Filter by streaming platform
-const minDuration = ref(0) // Minimum duration in minutes
-const maxDuration = ref(300) // Maximum duration in minutes (5 hours)
+const searchQuery = ref(savedFilters.searchQuery || '')
+const selectedSection = ref(savedFilters.selectedSection || 'all')
+const sortBy = ref(savedFilters.sortBy || 'default')
+const minRating = ref(savedFilters.minRating || 0)
+const movieType = ref(savedFilters.movieType || 'all') // 'all', 'movie', 'series'
+const selectedProvider = ref(savedFilters.selectedProvider || 'all') // Filter by streaming platform
+const minDuration = ref(savedFilters.minDuration || 0) // Minimum duration in minutes
+const maxDuration = ref(savedFilters.maxDuration ?? 300) // Maximum duration in minutes (5 hours)
+
+// Save filters to localStorage when they change
+watch(
+  [searchQuery, selectedSection, sortBy, minRating, movieType, selectedProvider, minDuration, maxDuration],
+  () => {
+    localStorage.setItem('movie_filters', JSON.stringify({
+      searchQuery: searchQuery.value,
+      selectedSection: selectedSection.value,
+      sortBy: sortBy.value,
+      minRating: minRating.value,
+      movieType: movieType.value,
+      selectedProvider: selectedProvider.value,
+      minDuration: minDuration.value,
+      maxDuration: maxDuration.value
+    }))
+  }
+)
 
 // API Keys from localStorage
 const todoistToken = ref(localStorage.getItem('todoist_token') || '')
