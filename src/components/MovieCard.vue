@@ -245,6 +245,17 @@ const kinopoiskUrl = computed(() => {
                 @click.stop
               />
             </button>
+            <button
+              v-if="movie.dueDate"
+              class="clear-date-btn"
+              @click.stop="emit('schedule', { movie: movie, date: null })"
+              title="Убрать дату"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 6 6 18"></path>
+                <path d="m6 6 12 12"></path>
+              </svg>
+            </button>
             <button class="watched-btn" @click.stop="emit('watched', movie)" title="Отметить как просмотренное">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12"></polyline>
@@ -493,6 +504,28 @@ const kinopoiskUrl = computed(() => {
   cursor: pointer;
   top: 0;
   left: 0;
+}
+
+.clear-date-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-date-btn:hover {
+  background: rgba(239, 68, 68, 0.8);
+  transform: scale(1.1);
+}
+
+.clear-date-btn svg {
+  flex-shrink: 0;
 }
 
 .watched-btn {
