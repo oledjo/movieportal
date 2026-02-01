@@ -228,21 +228,15 @@ const filteredMovies = computed(() => {
     })
   }
 
-  // Duration filter
+  // Duration filter (uses TMDB runtime only)
   if (minDuration.value > 0 || maxDuration.value < 300) {
     result = result.filter(m => {
-      // Get duration from movie data or TMDB
-      let duration = m.duration
-      
-      // If no duration in movie data, try TMDB
-      if (!duration || duration === 0) {
-        const tmdbData = getMovieTmdbData(m.id)
-        duration = tmdbData?.details?.runtime || null
-      }
-      
-      // If still no duration available, include it (don't filter out)
+      const tmdbData = getMovieTmdbData(m.id)
+      const duration = tmdbData?.details?.runtime || null
+
+      // If no duration available, include it (don't filter out)
       if (!duration || duration === 0) return true
-      
+
       // Check if duration is within range
       return duration >= minDuration.value && duration <= maxDuration.value
     })
