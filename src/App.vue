@@ -401,6 +401,10 @@ async function handleWatched(movie) {
     return
   }
 
+  // Confirmation dialog
+  const confirmed = confirm(`Отметить «${movie.title}» как просмотренный?\n\nБудет создана задача «Написать отзыв на фильм».`)
+  if (!confirmed) return
+
   try {
     // Complete the task in Todoist
     await completeTask(todoistToken.value, movie.id)
