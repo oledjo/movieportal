@@ -230,6 +230,17 @@ onUnmounted(() => {
                     @change="handleDateChange"
                   />
                 </button>
+                <button
+                  v-if="movie.dueDate"
+                  class="clear-date-btn"
+                  @click="emit('schedule', { movie: movie, date: null })"
+                  title="Убрать дату"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 6 6 18"></path>
+                    <path d="m6 6 12 12"></path>
+                  </svg>
+                </button>
                 <button class="watched-btn" @click="emit('watched', movie)" title="Отметить как просмотренное">
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
@@ -634,6 +645,30 @@ onUnmounted(() => {
   left: 0;
 }
 
+.clear-date-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-date-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #ef4444;
+  transform: scale(1.02);
+}
+
+.clear-date-btn svg {
+  flex-shrink: 0;
+}
+
 .watched-btn {
   display: flex;
   align-items: center;
@@ -925,6 +960,10 @@ onUnmounted(() => {
   .watched-btn {
     width: 100%;
     justify-content: center;
+  }
+
+  .clear-date-btn {
+    width: 100%;
   }
 
   .meta {
