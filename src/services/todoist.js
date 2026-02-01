@@ -36,6 +36,7 @@ export function parseMovieInfo(task, allTasks = [], actualSections = {}) {
     sectionName: sectionName,
     labels: task.labels || [],
     priority: task.priority,
+    dueDate: task.due?.date || null,
     kinopoiskRating: null,
     imdbRating: null,
     duration: null,
@@ -266,6 +267,32 @@ export async function createTask(apiToken, content) {
     },
     body: JSON.stringify({
       content: content
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error(`Todoist API error: ${response.status}`)
+  }
+
+  return await response.json()
+}
+
+/**
+ * Update task due date in Todoist
+ */
+export async function updateTaskDueDate(apiToken, taskId, dueDate) {
+  if (!apiToken) {
+    throw new Error('Todoist API token is required')
+  }
+
+  const response = await fetch(`${TODOIST_API_URL}/tasks/${taskId}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      due_date: dueDate // Format: YYYY-MM-DD or null to clear
     })
   })
 
