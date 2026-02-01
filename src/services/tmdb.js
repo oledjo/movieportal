@@ -634,11 +634,16 @@ export async function batchSearchMovies(movies, apiKey, onProgress = null, fetch
   for (const batch of batches) {
     // Process batch in parallel
     const batchPromises = batch.map(async (movie) => {
-      const isTV = movie.isSeries || false
+      let searchResult = null
 
-      let searchResult
       try {
-        searchResult = await searchMovie(movie.title, apiKey, movie.year, isTV)
+        // Always try searching as movie first (more reliable for runtime)
+        searchResult = await searchMovie(movie.title, apiKey, movie.year, false)
+
+        // If not found as movie and marked as series, try TV search
+        if (!searchResult && movie.isSeries) {
+          searchResult = await searchMovie(movie.title, apiKey, movie.year, true)
+        }
       } catch (error) {
         console.error(`TMDB: Error searching for "${movie.title}":`, error)
         searchResult = null
