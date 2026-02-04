@@ -4,6 +4,33 @@ const TODOIST_API_URL = 'https://api.todoist.com/rest/v2'
 // Project ID for "🍿 Фильмы"
 const MOVIES_PROJECT_ID = '6Crg4FqFXpXHmmXm'
 
+/**
+ * Fetch with retry logic for network errors
+ * Retries up to 3 times with exponential backoff
+ */
+async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+  let lastError = null
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options)
+      return response
+    } catch (error) {
+      lastError = error
+      console.warn(`Network error (attempt ${attempt + 1}/${maxRetries}):`, error.message)
+
+      // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+      if (attempt < maxRetries - 1) {
+        const delay = Math.pow(2, attempt) * 1000
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }
+
+  // All retries failed
+  throw new Error(`Ошибка сети: ${lastError?.message || 'не удалось подключиться'}. Проверьте интернет-соединение.`)
+}
+
 // Section IDs
 export const SECTIONS = {
   RULES: '674GCv5g249xxp3F',
@@ -171,7 +198,7 @@ export async function fetchMovies(apiToken) {
   }
 
   // First fetch sections to get actual section IDs and names
-  const sectionsResponse = await fetch(`${TODOIST_API_URL}/sections?project_id=${MOVIES_PROJECT_ID}`, {
+  const sectionsResponse = await fetchWithRetry(`${TODOIST_API_URL}/sections?project_id=${MOVIES_PROJECT_ID}`, {
     headers: {
       'Authorization': `Bearer ${apiToken}`
     }
@@ -186,14 +213,21 @@ export async function fetchMovies(apiToken) {
     console.log('Fetched sections:', actualSections)
   }
 
-  const response = await fetch(`${TODOIST_API_URL}/tasks?project_id=${MOVIES_PROJECT_ID}`, {
+  const response = await fetchWithRetry(`${TODOIST_API_URL}/tasks?project_id=${MOVIES_PROJECT_ID}`, {
     headers: {
       'Authorization': `Bearer ${apiToken}`
     }
   })
 
   if (!response.ok) {
-    throw new Error(`Todoist API error: ${response.status}`)
+    if (response.status === 401) {
+      throw new Error('Неверный Todoist токен. Проверьте настройки.')
+    } else if (response.status === 403) {
+      throw new Error('Нет доступа к проекту в Todoist.')
+    } else if (response.status >= 500) {
+      throw new Error('Сервер Todoist временно недоступен. Попробуйте позже.')
+    }
+    throw new Error(`Ошибка Todoist: ${response.status}`)
   }
 
   const tasks = await response.json()
@@ -224,7 +258,7 @@ export async function completeTask(apiToken, taskId) {
     throw new Error('Todoist API token is required')
   }
 
-  const response = await fetch(`${TODOIST_API_URL}/tasks/${taskId}/close`, {
+  const response = await fetchWithRetry(`${TODOIST_API_URL}/tasks/${taskId}/close`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiToken}`
@@ -232,7 +266,7 @@ export async function completeTask(apiToken, taskId) {
   })
 
   if (!response.ok) {
-    throw new Error(`Todoist API error: ${response.status}`)
+    throw new Error(`Ошибка Todoist: ${response.status}`)
   }
 
   return true
@@ -246,7 +280,7 @@ export async function createTask(apiToken, content) {
     throw new Error('Todoist API token is required')
   }
 
-  const response = await fetch(`${TODOIST_API_URL}/tasks`, {
+  const response = await fetchWithRetry(`${TODOIST_API_URL}/tasks`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiToken}`,
@@ -258,7 +292,7 @@ export async function createTask(apiToken, content) {
   })
 
   if (!response.ok) {
-    throw new Error(`Todoist API error: ${response.status}`)
+    throw new Error(`Ошибка Todoist: ${response.status}`)
   }
 
   return await response.json()
@@ -277,7 +311,7 @@ export async function updateTaskDueDate(apiToken, taskId, dueDate) {
     ? { due_date: dueDate }
     : { due_string: 'no date' }
 
-  const response = await fetch(`${TODOIST_API_URL}/tasks/${taskId}`, {
+  const response = await fetchWithRetry(`${TODOIST_API_URL}/tasks/${taskId}`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiToken}`,
@@ -287,7 +321,7 @@ export async function updateTaskDueDate(apiToken, taskId, dueDate) {
   })
 
   if (!response.ok) {
-    throw new Error(`Todoist API error: ${response.status}`)
+    throw new Error(`Ошибка Todoist: ${response.status}`)
   }
 
   return await response.json()
@@ -301,14 +335,14 @@ export async function fetchSections(apiToken) {
     throw new Error('Todoist API token is required')
   }
 
-  const response = await fetch(`${TODOIST_API_URL}/sections?project_id=${MOVIES_PROJECT_ID}`, {
+  const response = await fetchWithRetry(`${TODOIST_API_URL}/sections?project_id=${MOVIES_PROJECT_ID}`, {
     headers: {
       'Authorization': `Bearer ${apiToken}`
     }
   })
 
   if (!response.ok) {
-    throw new Error(`Todoist API error: ${response.status}`)
+    throw new Error(`Ошибка Todoist: ${response.status}`)
   }
 
   const sections = await response.json()
