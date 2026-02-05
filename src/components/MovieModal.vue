@@ -166,8 +166,12 @@ onUnmounted(() => {
     <div class="modal-overlay" @click.self="emit('close')">
       <div class="modal">
         <!-- Close button -->
-        <button class="close-btn" @click="emit('close')">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button
+          class="close-btn"
+          @click="emit('close')"
+          aria-label="Закрыть окно"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M18 6 6 18"></path>
             <path d="m6 6 12 12"></path>
           </svg>
@@ -207,16 +211,22 @@ onUnmounted(() => {
                   rel="noopener noreferrer"
                   class="kinopoisk-btn"
                   title="Открыть в Кинопоиске"
+                  aria-label="Открыть фильм в Кинопоиске (откроется в новой вкладке)"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                     <polyline points="15 3 21 3 21 9"></polyline>
                     <line x1="10" y1="14" x2="21" y2="3"></line>
                   </svg>
                   Кинопоиск
                 </a>
-                <button class="schedule-btn" @click="handleScheduleClick" title="Запланировать просмотр">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <button
+                  class="schedule-btn"
+                  @click="handleScheduleClick"
+                  title="Запланировать просмотр"
+                  aria-label="Запланировать дату просмотра фильма"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
                     <line x1="16" x2="16" y1="2" y2="6"></line>
                     <line x1="8" x2="8" y1="2" y2="6"></line>
@@ -225,9 +235,10 @@ onUnmounted(() => {
                   {{ dueDateFormatted || 'Запланировать' }}
                   <input
                     type="date"
-                    class="date-input"
+                    class="date-input visually-hidden"
                     :value="movie.dueDate || ''"
                     @change="handleDateChange"
+                    :aria-label="'Выбрать дату просмотра для ' + movie.title"
                   />
                 </button>
                 <button
@@ -235,14 +246,20 @@ onUnmounted(() => {
                   class="clear-date-btn"
                   @click="emit('schedule', { movie: movie, date: null })"
                   title="Убрать дату"
+                  aria-label="Убрать запланированную дату просмотра"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M18 6 6 18"></path>
                     <path d="m6 6 12 12"></path>
                   </svg>
                 </button>
-                <button class="watched-btn" @click="emit('watched', movie)" title="Отметить как просмотренное">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <button
+                  class="watched-btn"
+                  @click="emit('watched', movie)"
+                  title="Отметить как просмотренное"
+                  aria-label="Отметить фильм как просмотренный"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
                   Просмотрено
@@ -637,12 +654,22 @@ onUnmounted(() => {
 
 .schedule-btn .date-input {
   position: absolute;
-  opacity: 0;
   width: 100%;
   height: 100%;
   cursor: pointer;
   top: 0;
   left: 0;
+}
+
+/* Visually hidden but accessible for screen readers */
+.schedule-btn .date-input.visually-hidden {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .clear-date-btn {

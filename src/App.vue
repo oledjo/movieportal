@@ -6,6 +6,7 @@ import MovieCard from './components/MovieCard.vue'
 import MovieModal from './components/MovieModal.vue'
 import FilterBar from './components/FilterBar.vue'
 import SettingsModal from './components/SettingsModal.vue'
+import ToastNotification from './components/ToastNotification.vue'
 
 // State
 const movies = ref([])
@@ -16,6 +17,31 @@ const postersProgress = ref({ current: 0, total: 0 })
 const error = ref(null)
 const selectedMovie = ref(null)
 const showSettings = ref(false)
+
+// Toast notification state
+const toast = ref({
+  show: false,
+  message: '',
+  type: 'success',
+  actionText: null,
+  actionCallback: null
+})
+
+// Undo state for watched movies
+const pendingWatched = ref(null)
+let watchedTimeout = null
+
+function showToast(message, type = 'success', actionText = null, actionCallback = null) {
+  toast.value = { show: true, message, type, actionText, actionCallback }
+}
+
+function hideToast() {
+  toast.value.show = false
+}
+
+// Button loading states
+const watchedLoading = ref(false)
+const scheduleLoading = ref(false)
 
 // Load saved filters from localStorage
 const savedFilters = JSON.parse(localStorage.getItem('movie_filters') || '{}')
@@ -403,10 +429,13 @@ function closeMovie() {
   selectedMovie.value = null
 }
 
-// Mark movie as watched
+// Mark movie as watched with undo support
 async function handleWatched(movie) {
   if (!todoistToken.value) {
-    alert('Для отметки просмотра нужен Todoist API токен')
+    showToast('Для отметки просмотра нужен Todoist API токен. Откройте настройки.', 'error', 'Настройки', () => {
+      hideToast()
+      showSettings.value = true
+    })
     return
   }
 
@@ -414,32 +443,72 @@ async function handleWatched(movie) {
   const confirmed = confirm(`Отметить «${movie.title}» как просмотренный?\n\nБудет создана задача «Написать отзыв на фильм».`)
   if (!confirmed) return
 
+  watchedLoading.value = true
+
   try {
-    // Complete the task in Todoist
-    await completeTask(todoistToken.value, movie.id)
+    // Store movie for potential undo
+    const movieToRemove = { ...movie }
 
-    // Create a new task to write a review
-    await createTask(todoistToken.value, `Написать отзыв на фильм «${movie.title}»`)
-
-    // Remove movie from local list
+    // Remove movie from local list immediately (optimistic update)
     movies.value = movies.value.filter(m => m.id !== movie.id)
 
     // Close modal if this movie was open
     if (selectedMovie.value && selectedMovie.value.id === movie.id) {
       selectedMovie.value = null
     }
+
+    // Show toast with undo option
+    pendingWatched.value = movieToRemove
+    clearTimeout(watchedTimeout)
+
+    showToast(
+      `«${movie.title}» отмечен как просмотренный`,
+      'success',
+      'Отменить',
+      () => {
+        // Undo action
+        clearTimeout(watchedTimeout)
+        movies.value = [movieToRemove, ...movies.value]
+        pendingWatched.value = null
+        hideToast()
+        showToast('Действие отменено', 'info')
+      }
+    )
+
+    // Complete action after delay (allows undo)
+    watchedTimeout = setTimeout(async () => {
+      if (pendingWatched.value && pendingWatched.value.id === movieToRemove.id) {
+        try {
+          await completeTask(todoistToken.value, movieToRemove.id)
+          await createTask(todoistToken.value, `Написать отзыв на фильм «${movieToRemove.title}»`)
+          pendingWatched.value = null
+        } catch (e) {
+          console.error('Error completing task:', e)
+          // Restore movie on error
+          movies.value = [movieToRemove, ...movies.value]
+          showToast('Ошибка при сохранении: ' + e.message, 'error')
+        }
+      }
+    }, 5000)
   } catch (e) {
     console.error('Error marking movie as watched:', e)
-    alert('Ошибка при отметке просмотра: ' + e.message)
+    showToast('Ошибка при отметке просмотра: ' + e.message, 'error')
+  } finally {
+    watchedLoading.value = false
   }
 }
 
 // Schedule movie viewing date
 async function handleSchedule({ movie, date }) {
   if (!todoistToken.value) {
-    alert('Для планирования нужен Todoist API токен')
+    showToast('Для планирования нужен Todoist API токен. Откройте настройки.', 'error', 'Настройки', () => {
+      hideToast()
+      showSettings.value = true
+    })
     return
   }
+
+  scheduleLoading.value = true
 
   try {
     // Update due date in Todoist
@@ -455,21 +524,36 @@ async function handleSchedule({ movie, date }) {
     if (selectedMovie.value && selectedMovie.value.id === movie.id) {
       selectedMovie.value = { ...selectedMovie.value, dueDate: date }
     }
+
+    // Show success toast
+    if (date) {
+      const dateObj = new Date(date)
+      const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+      showToast(`«${movie.title}» запланирован на ${formattedDate}`, 'success')
+    } else {
+      showToast(`Дата просмотра «${movie.title}» убрана`, 'info')
+    }
   } catch (e) {
     console.error('Error scheduling movie:', e)
-    alert('Ошибка при планировании: ' + e.message)
+    showToast('Ошибка при планировании: ' + e.message, 'error')
+  } finally {
+    scheduleLoading.value = false
   }
 }
 
 // Reload posters (clear cache and reload)
 async function reloadPosters() {
   if (!tmdbApiKey.value) {
-    alert('Сначала укажите TMDB API ключ в настройках')
+    showToast('Сначала укажите TMDB API ключ в настройках', 'error', 'Настройки', () => {
+      hideToast()
+      showSettings.value = true
+    })
     return
   }
   clearTmdbCache()
   posters.value.clear()
   await loadPosters()
+  showToast('Постеры перезагружены', 'success')
 }
 
 // Save settings
@@ -496,7 +580,8 @@ onMounted(() => {
           Мои Фильмы
         </h1>
         <div class="header-actions">
-          <div class="stats" v-if="!loading && movies.length > 0">
+          <!-- Desktop stats -->
+          <div class="stats stats-desktop" v-if="!loading && movies.length > 0">
             <span class="stat">
               <strong>{{ stats.filtered }}</strong> из {{ stats.total }}
             </span>
@@ -504,22 +589,33 @@ onMounted(() => {
               Средний рейтинг: <strong>{{ stats.avgRating.toFixed(1) }}</strong>
             </span>
           </div>
-          <button 
-            v-if="!loading && movies.length > 0 && tmdbApiKey" 
-            class="reload-posters-btn" 
-            @click="reloadPosters" 
+          <!-- Mobile stats badge -->
+          <div class="stats-mobile" v-if="!loading && movies.length > 0">
+            <span class="stats-badge">{{ stats.filtered }}/{{ stats.total }}</span>
+          </div>
+          <button
+            v-if="!loading && movies.length > 0 && tmdbApiKey"
+            class="reload-posters-btn"
+            @click="reloadPosters"
             :disabled="loadingPosters"
+            :class="{ 'loading': loadingPosters }"
             title="Перезагрузить постеры"
+            aria-label="Перезагрузить постеры фильмов"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
               <path d="M21 3v5h-5"></path>
               <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
               <path d="M8 16H3v5"></path>
             </svg>
           </button>
-          <button class="settings-btn" @click="showSettings = true" title="Настройки">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <button
+            class="settings-btn"
+            @click="showSettings = true"
+            title="Настройки"
+            aria-label="Открыть настройки приложения"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
@@ -538,8 +634,18 @@ onMounted(() => {
 
       <!-- Error state -->
       <div v-else-if="error" class="error-container">
+        <div class="error-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        </div>
         <p class="error-message">{{ error }}</p>
-        <button class="retry-btn" @click="loadMovies">Попробовать снова</button>
+        <div class="error-actions">
+          <button class="retry-btn" @click="loadMovies">Попробовать снова</button>
+          <button class="settings-link-btn" @click="showSettings = true">Проверить настройки</button>
+        </div>
       </div>
 
       <!-- Content -->
@@ -611,6 +717,17 @@ onMounted(() => {
       @save="saveSettings"
       @close="showSettings = false"
     />
+
+    <!-- Toast notifications -->
+    <ToastNotification
+      :show="toast.show"
+      :message="toast.message"
+      :type="toast.type"
+      :action-text="toast.actionText"
+      :action-callback="toast.actionCallback"
+      @close="hideToast"
+      @action="toast.actionCallback && toast.actionCallback()"
+    />
   </div>
 </template>
 
@@ -657,11 +774,24 @@ onMounted(() => {
   gap: 1.5rem;
 }
 
-.stats {
+.stats-desktop {
   display: flex;
   gap: 1.5rem;
   color: var(--text-secondary);
   font-size: 0.9rem;
+}
+
+.stats-mobile {
+  display: none;
+}
+
+.stats-badge {
+  padding: 0.375rem 0.75rem;
+  background: var(--bg-card);
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .stat strong {
@@ -726,8 +856,23 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
+.error-icon {
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
 .error-message {
   color: var(--accent);
+  text-align: center;
+  max-width: 400px;
+  line-height: 1.5;
+}
+
+.error-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .retry-btn {
@@ -743,6 +888,27 @@ onMounted(() => {
 
 .retry-btn:hover {
   background: var(--accent-hover);
+}
+
+.settings-link-btn {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.settings-link-btn:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.reload-posters-btn.loading svg {
+  animation: spin 1s linear infinite;
 }
 
 .empty-hint {
@@ -788,8 +954,12 @@ onMounted(() => {
     flex-wrap: wrap;
   }
 
-  .stats {
+  .stats-desktop {
     display: none;
+  }
+
+  .stats-mobile {
+    display: block;
   }
 
   .main {
@@ -799,6 +969,17 @@ onMounted(() => {
   .movies-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 1rem;
+  }
+
+  .error-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .retry-btn,
+  .settings-link-btn {
+    width: 100%;
+    text-align: center;
   }
 }
 </style>

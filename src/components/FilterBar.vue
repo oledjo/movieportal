@@ -59,6 +59,19 @@ const hasActiveFilters = computed(() => {
          props.scheduledFilter !== 'all'
 })
 
+const activeFilterCount = computed(() => {
+  let count = 0
+  if (props.search) count++
+  if (props.section !== 'all') count++
+  if (props.minRating > 0) count++
+  if (props.sort !== 'default') count++
+  if (props.movieType !== 'all') count++
+  if (props.provider !== 'all') count++
+  if (props.minDuration > 0 || props.maxDuration < 300) count++
+  if (props.scheduledFilter !== 'all') count++
+  return count
+})
+
 function clearFilters() {
   emit('update:search', '')
   emit('update:section', 'all')
@@ -96,8 +109,9 @@ function formatDuration(minutes) {
           type="text"
           :value="search"
           @input="emit('update:search', $event.target.value)"
-          placeholder="Поиск фильма..."
+          placeholder="Поиск по названию, режиссёру, заметкам..."
           class="search-input"
+          aria-label="Поиск фильмов"
         />
         <button
           v-if="search"
@@ -170,11 +184,12 @@ function formatDuration(minutes) {
 
       <!-- Scheduled filter -->
       <div class="filter-group">
-        <label class="filter-label">Дата</label>
+        <label class="filter-label" id="scheduled-label">Запланировано</label>
         <select
           :value="scheduledFilter"
           @change="emit('update:scheduledFilter', $event.target.value)"
           class="filter-select"
+          aria-labelledby="scheduled-label"
         >
           <option
             v-for="opt in scheduledOptions"
@@ -225,52 +240,40 @@ function formatDuration(minutes) {
 
       <!-- Duration filter -->
       <div class="filter-group duration-filter">
-        <label class="filter-label">Длительность</label>
+        <label class="filter-label" id="duration-label">Длительность</label>
         <div class="duration-slider-container">
-          <div class="duration-inputs">
-            <input
-              type="number"
-              :value="minDuration"
-              @input="emit('update:minDuration', Math.max(0, Math.min(300, parseInt($event.target.value) || 0)))"
-              min="0"
-              max="300"
-              class="duration-input"
-              placeholder="От"
-            />
-            <span class="duration-separator">—</span>
-            <input
-              type="number"
-              :value="maxDuration"
-              @input="emit('update:maxDuration', Math.max(0, Math.min(300, parseInt($event.target.value) || 300)))"
-              min="0"
-              max="300"
-              class="duration-input"
-              placeholder="До"
-            />
+          <div class="duration-range-display">
+            {{ formatDuration(minDuration) }} — {{ formatDuration(maxDuration) }}
           </div>
           <div class="duration-sliders">
             <div class="duration-slider-wrapper">
-              <label class="duration-slider-label">От: {{ formatDuration(minDuration) }}</label>
+              <label class="duration-slider-label" :for="'min-duration'">От</label>
               <input
                 type="range"
+                id="min-duration"
                 :value="minDuration"
                 @input="emit('update:minDuration', Math.min(parseInt($event.target.value), maxDuration))"
                 min="0"
                 max="300"
                 step="5"
                 class="duration-slider"
+                aria-labelledby="duration-label"
+                :aria-valuetext="formatDuration(minDuration)"
               />
             </div>
             <div class="duration-slider-wrapper">
-              <label class="duration-slider-label">До: {{ formatDuration(maxDuration) }}</label>
+              <label class="duration-slider-label" :for="'max-duration'">До</label>
               <input
                 type="range"
+                id="max-duration"
                 :value="maxDuration"
                 @input="emit('update:maxDuration', Math.max(parseInt($event.target.value), minDuration))"
                 min="0"
                 max="300"
                 step="5"
                 class="duration-slider"
+                aria-labelledby="duration-label"
+                :aria-valuetext="formatDuration(maxDuration)"
               />
             </div>
           </div>
@@ -282,8 +285,10 @@ function formatDuration(minutes) {
         v-if="hasActiveFilters"
         class="clear-filters-btn"
         @click="clearFilters"
+        :aria-label="'Сбросить ' + activeFilterCount + ' активных фильтров'"
       >
         Сбросить фильтры
+        <span class="filter-count-badge">{{ activeFilterCount }}</span>
       </button>
     </div>
   </div>
@@ -406,11 +411,25 @@ function formatDuration(minutes) {
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .clear-filters-btn:hover {
   background: var(--bg-card);
   color: var(--text-primary);
+}
+
+.filter-count-badge {
+  background: var(--accent);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 10px;
+  min-width: 1.25rem;
+  text-align: center;
 }
 
 @media (max-width: 768px) {
@@ -443,31 +462,15 @@ function formatDuration(minutes) {
   gap: 0.5rem;
 }
 
-.duration-inputs {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.duration-input {
-  flex: 1;
-  padding: 0.5rem;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-size: 0.85rem;
+.duration-range-display {
   text-align: center;
-}
-
-.duration-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.duration-separator {
-  color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  font-weight: 500;
+  padding: 0.375rem 0.75rem;
+  background: var(--bg-card);
+  border-radius: 6px;
+  border: 1px solid var(--border);
 }
 
 .duration-sliders {
