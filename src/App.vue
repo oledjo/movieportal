@@ -2,20 +2,36 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { fetchMovies, completeTask, createTask, updateTaskDueDate, SECTIONS, SECTION_NAMES } from './services/todoist.js'
 import { batchSearchMovies, getPosterUrl, clearTmdbCache, saveCacheToStorage } from './services/tmdb.js'
+import { fetchBooks, completeBookTask, createBookReviewTask, updateBookDueDate, clearBooksCache } from './services/books.js'
+import { batchSearchBooks, getCoverUrl, clearOpenLibCache } from './services/openlib.js'
 import MovieCard from './components/MovieCard.vue'
 import MovieModal from './components/MovieModal.vue'
+import BookCard from './components/BookCard.vue'
+import BookModal from './components/BookModal.vue'
 import FilterBar from './components/FilterBar.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import ToastNotification from './components/ToastNotification.vue'
 
+// Content mode: 'movies' or 'books'
+const contentMode = ref(localStorage.getItem('content_mode') || 'movies')
+
+// Watch content mode changes
+watch(contentMode, (newMode) => {
+  localStorage.setItem('content_mode', newMode)
+  loadContent()
+})
+
 // State
 const movies = ref([])
+const books = ref([])
 const posters = ref(new Map())
+const bookCovers = ref(new Map())
 const loading = ref(true)
 const loadingPosters = ref(false)
 const postersProgress = ref({ current: 0, total: 0 })
 const error = ref(null)
 const selectedMovie = ref(null)
+const selectedBook = ref(null)
 const showSettings = ref(false)
 
 // Toast notification state
@@ -339,6 +355,15 @@ const stats = computed(() => ({
   }, 0) / movies.value.filter(m => m.kinopoiskRating || m.imdbRating).length || 0
 }))
 
+// Load content based on mode
+async function loadContent() {
+  if (contentMode.value === 'movies') {
+    await loadMovies()
+  } else {
+    await loadBooks()
+  }
+}
+
 // Load movies
 async function loadMovies() {
   if (!todoistToken.value) {
@@ -364,6 +389,85 @@ async function loadMovies() {
   } finally {
     loading.value = false
   }
+}
+
+// Load books
+async function loadBooks() {
+  if (!todoistToken.value) {
+    loading.value = false
+    showSettings.value = true
+    return
+  }
+
+  loading.value = true
+  error.value = null
+
+  try {
+    books.value = await fetchBooks(todoistToken.value)
+    localStorage.setItem('todoist_token', todoistToken.value)
+
+    // Load book covers
+    await loadBookCovers()
+  } catch (e) {
+    error.value = e.message
+    console.error('Error loading books:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Load book covers from Open Library
+async function loadBookCovers() {
+  if (books.value.length === 0) return
+
+  loadingPosters.value = true
+  postersProgress.value = { current: 0, total: books.value.length }
+
+  try {
+    const results = await batchSearchBooks(
+      books.value,
+      (current, total) => {
+        postersProgress.value = { current, total }
+      }
+    )
+    bookCovers.value = results
+
+    let found = 0
+    results.forEach((v) => { if (v && v.coverId) found++ })
+    console.log(`Book covers loaded: ${found}/${books.value.length} found`)
+  } catch (e) {
+    console.error('Error loading book covers:', e)
+  } finally {
+    loadingPosters.value = false
+  }
+}
+
+// Get book cover
+function getBookCover(bookId) {
+  const openLibData = bookCovers.value.get(bookId)
+  if (openLibData && openLibData.coverId) {
+    return getCoverUrl(openLibData.coverId, 'M')
+  }
+  return null
+}
+
+// Get Open Library data for a book
+function getBookOpenLibData(bookId) {
+  return bookCovers.value.get(bookId) || null
+}
+
+// Open book details
+function openBook(book) {
+  selectedBook.value = {
+    ...book,
+    cover: getBookCover(book.id),
+    openlib: getBookOpenLibData(book.id)
+  }
+}
+
+// Close book modal
+function closeBook() {
+  selectedBook.value = null
 }
 
 // Load posters from TMDB
@@ -543,17 +647,128 @@ async function handleSchedule({ movie, date }) {
 
 // Reload posters (clear cache and reload)
 async function reloadPosters() {
-  if (!tmdbApiKey.value) {
-    showToast('Сначала укажите TMDB API ключ в настройках', 'error', 'Настройки', () => {
+  if (contentMode.value === 'movies') {
+    if (!tmdbApiKey.value) {
+      showToast('Сначала укажите TMDB API ключ в настройках', 'error', 'Настройки', () => {
+        hideToast()
+        showSettings.value = true
+      })
+      return
+    }
+    clearTmdbCache()
+    posters.value.clear()
+    await loadPosters()
+    showToast('Постеры перезагружены', 'success')
+  } else {
+    clearOpenLibCache()
+    bookCovers.value.clear()
+    await loadBookCovers()
+    showToast('Обложки перезагружены', 'success')
+  }
+}
+
+// Mark book as read with undo support
+async function handleBookRead(book) {
+  if (!todoistToken.value) {
+    showToast('Для отметки прочтения нужен Todoist API токен. Откройте настройки.', 'error', 'Настройки', () => {
       hideToast()
       showSettings.value = true
     })
     return
   }
-  clearTmdbCache()
-  posters.value.clear()
-  await loadPosters()
-  showToast('Постеры перезагружены', 'success')
+
+  const confirmed = confirm(`Отметить «${book.title}» как прочитанную?\n\nБудет создана задача «Написать отзыв на книгу».`)
+  if (!confirmed) return
+
+  watchedLoading.value = true
+
+  try {
+    const bookToRemove = { ...book }
+
+    // Remove book from local list immediately
+    books.value = books.value.filter(b => b.id !== book.id)
+
+    // Close modal if this book was open
+    if (selectedBook.value && selectedBook.value.id === book.id) {
+      selectedBook.value = null
+    }
+
+    // Show toast with undo option
+    pendingWatched.value = bookToRemove
+    clearTimeout(watchedTimeout)
+
+    showToast(
+      `«${book.title}» отмечена как прочитанная`,
+      'success',
+      'Отменить',
+      () => {
+        clearTimeout(watchedTimeout)
+        books.value = [bookToRemove, ...books.value]
+        pendingWatched.value = null
+        hideToast()
+        showToast('Действие отменено', 'info')
+      }
+    )
+
+    // Complete action after delay
+    watchedTimeout = setTimeout(async () => {
+      if (pendingWatched.value && pendingWatched.value.id === bookToRemove.id) {
+        try {
+          await completeBookTask(todoistToken.value, bookToRemove.id)
+          await createBookReviewTask(todoistToken.value, bookToRemove.title)
+          pendingWatched.value = null
+        } catch (e) {
+          console.error('Error completing book task:', e)
+          books.value = [bookToRemove, ...books.value]
+          showToast('Ошибка при сохранении: ' + e.message, 'error')
+        }
+      }
+    }, 5000)
+  } catch (e) {
+    console.error('Error marking book as read:', e)
+    showToast('Ошибка при отметке прочтения: ' + e.message, 'error')
+  } finally {
+    watchedLoading.value = false
+  }
+}
+
+// Schedule book reading date
+async function handleBookSchedule({ book, date }) {
+  if (!todoistToken.value) {
+    showToast('Для планирования нужен Todoist API токен. Откройте настройки.', 'error', 'Настройки', () => {
+      hideToast()
+      showSettings.value = true
+    })
+    return
+  }
+
+  scheduleLoading.value = true
+
+  try {
+    await updateBookDueDate(todoistToken.value, book.id, date)
+
+    const bookIndex = books.value.findIndex(b => b.id === book.id)
+    if (bookIndex !== -1) {
+      books.value[bookIndex].dueDate = date
+    }
+
+    if (selectedBook.value && selectedBook.value.id === book.id) {
+      selectedBook.value = { ...selectedBook.value, dueDate: date }
+    }
+
+    if (date) {
+      const dateObj = new Date(date)
+      const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+      showToast(`«${book.title}» запланирована на ${formattedDate}`, 'success')
+    } else {
+      showToast(`Дата чтения «${book.title}» убрана`, 'info')
+    }
+  } catch (e) {
+    console.error('Error scheduling book:', e)
+    showToast('Ошибка при планировании: ' + e.message, 'error')
+  } finally {
+    scheduleLoading.value = false
+  }
 }
 
 // Save settings
@@ -561,12 +776,122 @@ function saveSettings(settings) {
   todoistToken.value = settings.todoistToken
   tmdbApiKey.value = settings.tmdbApiKey
   showSettings.value = false
-  loadMovies()
+  loadContent()
 }
+
+// Computed properties for books filtering
+const filteredBooks = computed(() => {
+  let result = [...books.value]
+
+  // Search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    result = result.filter(b =>
+      b.title.toLowerCase().includes(query) ||
+      (b.author && b.author.toLowerCase().includes(query)) ||
+      (b.reason && b.reason.toLowerCase().includes(query))
+    )
+  }
+
+  // Section filter
+  if (selectedSection.value !== 'all') {
+    result = result.filter(b => b.sectionId === selectedSection.value)
+  }
+
+  // Rating filter (for books, use livilibRating or goodreadsRating)
+  if (minRating.value > 0) {
+    result = result.filter(b => {
+      const rating = b.livilibRating || b.goodreadsRating || b.openlib?.ratingsAverage
+      // Books use 5-point scale, so convert minRating from 10-point to 5-point
+      const minRatingConverted = minRating.value / 2
+      return rating !== null && rating >= minRatingConverted
+    })
+  }
+
+  // Scheduled filter
+  if (scheduledFilter.value === 'scheduled') {
+    result = result.filter(b => b.dueDate)
+  } else if (scheduledFilter.value === 'not-scheduled') {
+    result = result.filter(b => !b.dueDate)
+  }
+
+  // Sorting
+  switch (sortBy.value) {
+    case 'rating-desc':
+      result.sort((a, b) => {
+        const ratingA = a.livilibRating || a.goodreadsRating || 0
+        const ratingB = b.livilibRating || b.goodreadsRating || 0
+        return ratingB - ratingA
+      })
+      break
+    case 'rating-asc':
+      result.sort((a, b) => {
+        const ratingA = a.livilibRating || a.goodreadsRating || 0
+        const ratingB = b.livilibRating || b.goodreadsRating || 0
+        return ratingA - ratingB
+      })
+      break
+    case 'title-asc':
+      result.sort((a, b) => a.title.localeCompare(b.title, 'ru'))
+      break
+    case 'title-desc':
+      result.sort((a, b) => b.title.localeCompare(a.title, 'ru'))
+      break
+    case 'year-desc':
+      result.sort((a, b) => (b.year || 0) - (a.year || 0))
+      break
+    case 'year-asc':
+      result.sort((a, b) => (a.year || 0) - (b.year || 0))
+      break
+  }
+
+  return result
+})
+
+// Stats for books
+const booksStats = computed(() => ({
+  total: books.value.length,
+  filtered: filteredBooks.value.length,
+  withRating: books.value.filter(b => b.livilibRating || b.goodreadsRating).length,
+  avgRating: books.value.reduce((sum, b) => {
+    const rating = b.livilibRating || b.goodreadsRating || 0
+    return sum + rating
+  }, 0) / books.value.filter(b => b.livilibRating || b.goodreadsRating).length || 0
+}))
+
+// Available sections for books
+const availableBookSections = computed(() => {
+  const sections = new Set(books.value.map(b => b.sectionId))
+  const sectionList = [{ id: 'all', name: 'Все' }]
+
+  Array.from(sections).forEach(id => {
+    const book = books.value.find(b => b.sectionId === id)
+    if (book && book.sectionName && book.sectionName !== 'Другое') {
+      sectionList.push({ id, name: book.sectionName })
+    }
+  })
+
+  return sectionList
+})
+
+// Current stats based on mode
+const currentStats = computed(() => {
+  return contentMode.value === 'movies' ? stats : booksStats
+})
+
+// Current items count
+const currentItemsCount = computed(() => {
+  return contentMode.value === 'movies' ? movies.value.length : books.value.length
+})
+
+// Current filtered count
+const currentFilteredCount = computed(() => {
+  return contentMode.value === 'movies' ? filteredMovies.value.length : filteredBooks.value.length
+})
 
 // Initial load
 onMounted(() => {
-  loadMovies()
+  loadContent()
 })
 </script>
 
@@ -575,32 +900,53 @@ onMounted(() => {
     <!-- Header -->
     <header class="header">
       <div class="header-content">
-        <h1 class="logo">
-          <span class="logo-icon">🍿</span>
-          Мои Фильмы
-        </h1>
+        <div class="header-left">
+          <h1 class="logo">
+            <span class="logo-icon">{{ contentMode === 'movies' ? '🍿' : '📚' }}</span>
+            {{ contentMode === 'movies' ? 'Мои Фильмы' : 'Мои Книги' }}
+          </h1>
+          <!-- Content mode switcher -->
+          <div class="mode-switcher">
+            <button
+              :class="['mode-btn', { active: contentMode === 'movies' }]"
+              @click="contentMode = 'movies'"
+              aria-label="Показать фильмы"
+            >
+              <span class="mode-icon">🍿</span>
+              <span class="mode-text">Фильмы</span>
+            </button>
+            <button
+              :class="['mode-btn', { active: contentMode === 'books' }]"
+              @click="contentMode = 'books'"
+              aria-label="Показать книги"
+            >
+              <span class="mode-icon">📚</span>
+              <span class="mode-text">Книги</span>
+            </button>
+          </div>
+        </div>
         <div class="header-actions">
           <!-- Desktop stats -->
-          <div class="stats stats-desktop" v-if="!loading && movies.length > 0">
+          <div class="stats stats-desktop" v-if="!loading && currentItemsCount > 0">
             <span class="stat">
-              <strong>{{ stats.filtered }}</strong> из {{ stats.total }}
+              <strong>{{ currentStats.value.filtered }}</strong> из {{ currentStats.value.total }}
             </span>
-            <span class="stat" v-if="stats.avgRating > 0">
-              Средний рейтинг: <strong>{{ stats.avgRating.toFixed(1) }}</strong>
+            <span class="stat" v-if="currentStats.value.avgRating > 0">
+              Средний рейтинг: <strong>{{ currentStats.value.avgRating.toFixed(1) }}</strong>
             </span>
           </div>
           <!-- Mobile stats badge -->
-          <div class="stats-mobile" v-if="!loading && movies.length > 0">
-            <span class="stats-badge">{{ stats.filtered }}/{{ stats.total }}</span>
+          <div class="stats-mobile" v-if="!loading && currentItemsCount > 0">
+            <span class="stats-badge">{{ currentStats.value.filtered }}/{{ currentStats.value.total }}</span>
           </div>
           <button
-            v-if="!loading && movies.length > 0 && tmdbApiKey"
+            v-if="!loading && currentItemsCount > 0 && (contentMode === 'books' || tmdbApiKey)"
             class="reload-posters-btn"
             @click="reloadPosters"
             :disabled="loadingPosters"
             :class="{ 'loading': loadingPosters }"
-            title="Перезагрузить постеры"
-            aria-label="Перезагрузить постеры фильмов"
+            :title="contentMode === 'movies' ? 'Перезагрузить постеры' : 'Перезагрузить обложки'"
+            :aria-label="contentMode === 'movies' ? 'Перезагрузить постеры фильмов' : 'Перезагрузить обложки книг'"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
@@ -629,7 +975,7 @@ onMounted(() => {
       <!-- Loading state -->
       <div v-if="loading" class="loading-container">
         <div class="loader"></div>
-        <p>Загрузка фильмов...</p>
+        <p>{{ contentMode === 'movies' ? 'Загрузка фильмов...' : 'Загрузка книг...' }}</p>
       </div>
 
       <!-- Error state -->
@@ -650,8 +996,9 @@ onMounted(() => {
 
       <!-- Content -->
       <template v-else>
-        <!-- Filter bar -->
+        <!-- Filter bar (movies mode) -->
         <FilterBar
+          v-if="contentMode === 'movies'"
           v-model:search="searchQuery"
           v-model:section="selectedSection"
           v-model:sort="sortBy"
@@ -665,7 +1012,21 @@ onMounted(() => {
           :providers="availableProviders"
         />
 
-        <!-- Posters loading indicator -->
+        <!-- Filter bar (books mode) - simplified -->
+        <FilterBar
+          v-else
+          v-model:search="searchQuery"
+          v-model:section="selectedSection"
+          v-model:sort="sortBy"
+          v-model:minRating="minRating"
+          v-model:scheduledFilter="scheduledFilter"
+          :sections="availableBookSections"
+          :providers="[]"
+          movie-type="all"
+          :hide-movie-filters="true"
+        />
+
+        <!-- Posters/Covers loading indicator -->
         <div v-if="loadingPosters" class="posters-loading">
           <div class="posters-progress">
             <div
@@ -673,30 +1034,52 @@ onMounted(() => {
               :style="{ width: `${(postersProgress.current / postersProgress.total) * 100}%` }"
             ></div>
           </div>
-          <span>Загрузка постеров: {{ postersProgress.current }} / {{ postersProgress.total }}</span>
+          <span>{{ contentMode === 'movies' ? 'Загрузка постеров' : 'Загрузка обложек' }}: {{ postersProgress.current }} / {{ postersProgress.total }}</span>
         </div>
 
         <!-- Movies grid -->
-        <div class="movies-grid" v-if="filteredMovies.length > 0">
-          <MovieCard
-            v-for="movie in filteredMovies"
-            :key="movie.id"
-            :movie="movie"
-            :poster="getMoviePoster(movie.id)"
-            :tmdb="getMovieTmdbData(movie.id)"
-            @click="openMovie(movie)"
-            @watched="handleWatched"
-            @schedule="handleSchedule"
-          />
-        </div>
+        <template v-if="contentMode === 'movies'">
+          <div class="movies-grid" v-if="filteredMovies.length > 0">
+            <MovieCard
+              v-for="movie in filteredMovies"
+              :key="movie.id"
+              :movie="movie"
+              :poster="getMoviePoster(movie.id)"
+              :tmdb="getMovieTmdbData(movie.id)"
+              @click="openMovie(movie)"
+              @watched="handleWatched"
+              @schedule="handleSchedule"
+            />
+          </div>
 
-        <!-- Empty state -->
-        <div v-else class="empty-container">
-          <p>Фильмы не найдены</p>
-          <p class="empty-hint" v-if="searchQuery || selectedSection !== 'all' || minRating > 0">
-            Попробуйте изменить фильтры
-          </p>
-        </div>
+          <div v-else class="empty-container">
+            <p>Фильмы не найдены</p>
+            <p class="empty-hint" v-if="searchQuery || selectedSection !== 'all' || minRating > 0">
+              Попробуйте изменить фильтры
+            </p>
+          </div>
+        </template>
+
+        <!-- Books grid -->
+        <template v-else>
+          <div class="movies-grid" v-if="filteredBooks.length > 0">
+            <BookCard
+              v-for="book in filteredBooks"
+              :key="book.id"
+              :book="{ ...book, openlib: getBookOpenLibData(book.id) }"
+              @click="openBook(book)"
+              @read="handleBookRead"
+              @schedule="handleBookSchedule"
+            />
+          </div>
+
+          <div v-else class="empty-container">
+            <p>Книги не найдены</p>
+            <p class="empty-hint" v-if="searchQuery || selectedSection !== 'all' || minRating > 0">
+              Попробуйте изменить фильтры
+            </p>
+          </div>
+        </template>
       </template>
     </main>
 
@@ -707,6 +1090,15 @@ onMounted(() => {
       @close="closeMovie"
       @watched="handleWatched"
       @schedule="handleSchedule"
+    />
+
+    <!-- Book modal -->
+    <BookModal
+      v-if="selectedBook"
+      :book="selectedBook"
+      @close="closeBook"
+      @read="handleBookRead"
+      @schedule="handleBookSchedule"
     />
 
     <!-- Settings modal -->
@@ -756,6 +1148,12 @@ onMounted(() => {
   gap: 2rem;
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
 .logo {
   font-size: 1.5rem;
   font-weight: 700;
@@ -766,6 +1164,47 @@ onMounted(() => {
 
 .logo-icon {
   font-size: 1.8rem;
+}
+
+.mode-switcher {
+  display: flex;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 0.25rem;
+  gap: 0.25rem;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.mode-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mode-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+.mode-icon {
+  font-size: 1.1rem;
+}
+
+.mode-text {
+  display: block;
 }
 
 .header-actions {
@@ -952,6 +1391,29 @@ onMounted(() => {
   .header-content {
     padding: 1rem;
     flex-wrap: wrap;
+  }
+
+  .header-left {
+    width: 100%;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .logo {
+    font-size: 1.25rem;
+  }
+
+  .mode-switcher {
+    padding: 0.125rem;
+  }
+
+  .mode-btn {
+    padding: 0.375rem 0.625rem;
+    font-size: 0.8rem;
+  }
+
+  .mode-text {
+    display: none;
   }
 
   .stats-desktop {
