@@ -12,7 +12,11 @@ const props = defineProps({
   maxDuration: Number,
   scheduledFilter: String,
   sections: Array,
-  providers: Array
+  providers: Array,
+  hideMovieFilters: {
+    type: Boolean,
+    default: false
+  }
 })
 
 const emit = defineEmits(['update:search', 'update:section', 'update:sort', 'update:minRating', 'update:movieType', 'update:provider', 'update:minDuration', 'update:maxDuration', 'update:scheduledFilter'])
@@ -128,8 +132,8 @@ function formatDuration(minutes) {
 
     <!-- Filters row -->
     <div class="filters-row">
-      <!-- Movie Type filter -->
-      <div class="filter-group">
+      <!-- Movie Type filter (movies only) -->
+      <div class="filter-group" v-if="!hideMovieFilters">
         <label class="filter-label">Тип</label>
         <select
           :value="movieType"
@@ -238,8 +242,8 @@ function formatDuration(minutes) {
         </select>
       </div>
 
-      <!-- Duration filter -->
-      <div class="filter-group duration-filter">
+      <!-- Duration filter (movies only) -->
+      <div class="filter-group duration-filter" v-if="!hideMovieFilters">
         <label class="filter-label" id="duration-label">Длительность</label>
         <div class="duration-slider-container">
           <div class="duration-range-display">
