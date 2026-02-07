@@ -2,8 +2,8 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { fetchMovies, completeTask, createTask, updateTaskDueDate, SECTIONS, SECTION_NAMES } from './services/todoist.js'
 import { batchSearchMovies, getPosterUrl, clearTmdbCache, saveCacheToStorage } from './services/tmdb.js'
-import { fetchBooks, completeBookTask, createBookReviewTask, updateBookDueDate, clearBooksCache } from './services/books.js'
-import { batchSearchBooks, getCoverUrl, clearOpenLibCache } from './services/openlib.js'
+import { fetchBooks, completeBookTask, createBookReviewTask, clearBooksCache } from './services/books.js'
+import { batchSearchBooks, getBookCoverUrl, clearOpenLibCache } from './services/openlib.js'
 import MovieCard from './components/MovieCard.vue'
 import MovieModal from './components/MovieModal.vue'
 import BookCard from './components/BookCard.vue'
@@ -445,10 +445,7 @@ async function loadBookCovers() {
 // Get book cover
 function getBookCover(bookId) {
   const openLibData = bookCovers.value.get(bookId)
-  if (openLibData && openLibData.coverId) {
-    return getCoverUrl(openLibData.coverId, 'M')
-  }
-  return null
+  return getBookCoverUrl(openLibData, 'M')
 }
 
 // Get Open Library data for a book
@@ -732,45 +729,6 @@ async function handleBookRead(book) {
   }
 }
 
-// Schedule book reading date
-async function handleBookSchedule({ book, date }) {
-  if (!todoistToken.value) {
-    showToast('Для планирования нужен Todoist API токен. Откройте настройки.', 'error', 'Настройки', () => {
-      hideToast()
-      showSettings.value = true
-    })
-    return
-  }
-
-  scheduleLoading.value = true
-
-  try {
-    await updateBookDueDate(todoistToken.value, book.id, date)
-
-    const bookIndex = books.value.findIndex(b => b.id === book.id)
-    if (bookIndex !== -1) {
-      books.value[bookIndex].dueDate = date
-    }
-
-    if (selectedBook.value && selectedBook.value.id === book.id) {
-      selectedBook.value = { ...selectedBook.value, dueDate: date }
-    }
-
-    if (date) {
-      const dateObj = new Date(date)
-      const formattedDate = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
-      showToast(`«${book.title}» запланирована на ${formattedDate}`, 'success')
-    } else {
-      showToast(`Дата чтения «${book.title}» убрана`, 'info')
-    }
-  } catch (e) {
-    console.error('Error scheduling book:', e)
-    showToast('Ошибка при планировании: ' + e.message, 'error')
-  } finally {
-    scheduleLoading.value = false
-  }
-}
-
 // Save settings
 function saveSettings(settings) {
   todoistToken.value = settings.todoistToken
@@ -806,13 +764,6 @@ const filteredBooks = computed(() => {
       const minRatingConverted = minRating.value / 2
       return rating !== null && rating >= minRatingConverted
     })
-  }
-
-  // Scheduled filter
-  if (scheduledFilter.value === 'scheduled') {
-    result = result.filter(b => b.dueDate)
-  } else if (scheduledFilter.value === 'not-scheduled') {
-    result = result.filter(b => !b.dueDate)
   }
 
   // Sorting
@@ -1019,7 +970,6 @@ onMounted(() => {
           v-model:section="selectedSection"
           v-model:sort="sortBy"
           v-model:minRating="minRating"
-          v-model:scheduledFilter="scheduledFilter"
           :sections="availableBookSections"
           :providers="[]"
           movie-type="all"
@@ -1069,7 +1019,6 @@ onMounted(() => {
               :book="{ ...book, openlib: getBookOpenLibData(book.id) }"
               @click="openBook(book)"
               @read="handleBookRead"
-              @schedule="handleBookSchedule"
             />
           </div>
 
@@ -1098,7 +1047,6 @@ onMounted(() => {
       :book="selectedBook"
       @close="closeBook"
       @read="handleBookRead"
-      @schedule="handleBookSchedule"
     />
 
     <!-- Settings modal -->

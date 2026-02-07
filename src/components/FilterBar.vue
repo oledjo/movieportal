@@ -187,7 +187,7 @@ function formatDuration(minutes) {
       </div>
 
       <!-- Scheduled filter -->
-      <div class="filter-group">
+      <div class="filter-group" v-if="!hideMovieFilters">
         <label class="filter-label" id="scheduled-label">Запланировано</label>
         <select
           :value="scheduledFilter"

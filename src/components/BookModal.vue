@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
-import { getCoverUrl, getLivilibUrl, getGoodreadsUrl } from '../services/openlib.js'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { getBookCoverUrl, getLivilibUrl, getGoodreadsUrl } from '../services/openlib.js'
 
 const props = defineProps({
   book: {
@@ -9,13 +9,13 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'read', 'schedule'])
+const emit = defineEmits(['close', 'read'])
+
+const coverError = ref(false)
 
 const cover = computed(() => {
-  if (props.book.openlib?.coverId) {
-    return getCoverUrl(props.book.openlib.coverId, 'L')
-  }
-  return null
+  if (coverError.value) return null
+  return getBookCoverUrl(props.book.openlib, 'L')
 })
 
 const rating = computed(() => {
@@ -50,32 +50,12 @@ const goodreadsUrl = computed(() => {
   return getGoodreadsUrl(props.book.title, author.value)
 })
 
-const dueDateFormatted = computed(() => {
-  if (!props.book.dueDate) return null
-  const date = new Date(props.book.dueDate)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-
-  if (date.toDateString() === today.toDateString()) return 'Сегодня'
-  if (date.toDateString() === tomorrow.toDateString()) return 'Завтра'
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
-})
-
 const pages = computed(() => {
   return props.book.pages || props.book.openlib?.pages || null
 })
 
-function handleScheduleClick(e) {
-  const btn = e.currentTarget
-  const hiddenInput = btn.querySelector('input[type="date"]')
-  if (hiddenInput) hiddenInput.showPicker()
-}
-
-function handleDateChange(e) {
-  const date = e.target.value
-  emit('schedule', { book: props.book, date: date || null })
+function handleCoverError() {
+  coverError.value = true
 }
 
 function handleKeydown(e) {
@@ -121,6 +101,7 @@ onUnmounted(() => {
                 :src="cover"
                 :alt="book.title"
                 class="cover"
+                @error="handleCoverError"
               />
               <div v-else class="cover-placeholder">
                 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -165,39 +146,6 @@ onUnmounted(() => {
                   </svg>
                   Goodreads
                 </a>
-                <button
-                  class="schedule-btn"
-                  @click="handleScheduleClick"
-                  title="Запланировать чтение"
-                  aria-label="Запланировать дату чтения"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
-                    <line x1="16" x2="16" y1="2" y2="6"></line>
-                    <line x1="8" x2="8" y1="2" y2="6"></line>
-                    <line x1="3" x2="21" y1="10" y2="10"></line>
-                  </svg>
-                  {{ dueDateFormatted || 'Запланировать' }}
-                  <input
-                    type="date"
-                    class="date-input visually-hidden"
-                    :value="book.dueDate || ''"
-                    @change="handleDateChange"
-                    :aria-label="'Выбрать дату чтения для ' + book.title"
-                  />
-                </button>
-                <button
-                  v-if="book.dueDate"
-                  class="clear-date-btn"
-                  @click="emit('schedule', { book: book, date: null })"
-                  title="Убрать дату"
-                  aria-label="Убрать запланированную дату"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"></path>
-                    <path d="m6 6 12 12"></path>
-                  </svg>
-                </button>
                 <button
                   class="read-btn"
                   @click="emit('read', book)"
@@ -460,67 +408,6 @@ onUnmounted(() => {
   transform: scale(1.02);
 }
 
-.schedule-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  background: #8b5cf6;
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  white-space: nowrap;
-}
-
-.schedule-btn:hover {
-  background: #7c3aed;
-  transform: scale(1.02);
-}
-
-.schedule-btn .date-input {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-}
-
-.schedule-btn .date-input.visually-hidden {
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
-}
-
-.clear-date-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.625rem;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-normal);
-}
-
-.clear-date-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #ef4444;
-  color: #ef4444;
-  transform: scale(1.02);
-}
-
 .read-btn {
   display: flex;
   align-items: center;
@@ -722,14 +609,9 @@ onUnmounted(() => {
 
   .livelib-btn,
   .goodreads-btn,
-  .schedule-btn,
   .read-btn {
     width: 100%;
     justify-content: center;
-  }
-
-  .clear-date-btn {
-    width: 100%;
   }
 
   .authors {

@@ -1,6 +1,6 @@
 <script setup>
-import { computed } from 'vue'
-import { getCoverUrl, getLivilibUrl, getGoodreadsUrl } from '../services/openlib.js'
+import { computed, ref } from 'vue'
+import { getBookCoverUrl, getLivilibUrl, getGoodreadsUrl } from '../services/openlib.js'
 
 const props = defineProps({
   book: {
@@ -9,13 +9,13 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['click', 'read', 'schedule'])
+const emit = defineEmits(['click', 'read'])
+
+const coverError = ref(false)
 
 const cover = computed(() => {
-  if (props.book.openlib?.coverId) {
-    return getCoverUrl(props.book.openlib.coverId, 'M')
-  }
-  return null
+  if (coverError.value) return null
+  return getBookCoverUrl(props.book.openlib, 'M')
 })
 
 const rating = computed(() => {
@@ -46,30 +46,8 @@ const livilibUrl = computed(() => {
   return getLivilibUrl(props.book.title, author.value)
 })
 
-const dueDateFormatted = computed(() => {
-  if (!props.book.dueDate) return null
-  const date = new Date(props.book.dueDate)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-
-  if (date.toDateString() === today.toDateString()) return 'Сегодня'
-  if (date.toDateString() === tomorrow.toDateString()) return 'Завтра'
-
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-})
-
-function handleScheduleClick(e) {
-  e.stopPropagation()
-  const btn = e.currentTarget
-  const hiddenInput = btn.querySelector('input[type="date"]')
-  if (hiddenInput) hiddenInput.showPicker()
-}
-
-function handleDateChange(e) {
-  const date = e.target.value
-  emit('schedule', { book: props.book, date: date || null })
+function handleCoverError() {
+  coverError.value = true
 }
 </script>
 
@@ -83,6 +61,7 @@ function handleDateChange(e) {
         :alt="book.title"
         class="cover"
         loading="lazy"
+        @error="handleCoverError"
       />
       <div v-else class="cover-placeholder">
         <div class="placeholder-gradient"></div>
@@ -105,11 +84,6 @@ function handleDateChange(e) {
         role="img"
       >
         {{ rating.toFixed(1) }}
-      </div>
-
-      <!-- Due date badge -->
-      <div v-if="book.dueDate" class="due-date-badge">
-        {{ dueDateFormatted }}
       </div>
 
       <!-- Audiobook badge -->
@@ -140,40 +114,6 @@ function handleDateChange(e) {
               </svg>
               Livelib
             </a>
-            <button
-              class="schedule-btn"
-              @click="handleScheduleClick"
-              title="Запланировать чтение"
-              aria-label="Запланировать дату чтения книги"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
-                <line x1="16" x2="16" y1="2" y2="6"></line>
-                <line x1="8" x2="8" y1="2" y2="6"></line>
-                <line x1="3" x2="21" y1="10" y2="10"></line>
-              </svg>
-              {{ dueDateFormatted || 'Запланировать' }}
-              <input
-                type="date"
-                class="date-input visually-hidden"
-                :value="book.dueDate || ''"
-                @change="handleDateChange"
-                @click.stop
-                :aria-label="'Выбрать дату чтения для ' + book.title"
-              />
-            </button>
-            <button
-              v-if="book.dueDate"
-              class="clear-date-btn"
-              @click.stop="emit('schedule', { book: book, date: null })"
-              title="Убрать дату"
-              aria-label="Убрать запланированную дату чтения"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M18 6 6 18"></path>
-                <path d="m6 6 12 12"></path>
-              </svg>
-            </button>
             <button
               class="read-btn"
               @click.stop="emit('read', book)"
@@ -306,19 +246,6 @@ function handleDateChange(e) {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.due-date-badge {
-  position: absolute;
-  top: 0.5rem;
-  left: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.7rem;
-  font-weight: 600;
-  background: #8b5cf6;
-  color: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
 .audiobook-badge {
   position: absolute;
   bottom: 0.5rem;
@@ -379,65 +306,6 @@ function handleDateChange(e) {
 
 .livelib-btn:hover {
   background: #e65c00;
-  transform: scale(1.05);
-}
-
-.schedule-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 0.75rem;
-  background: #8b5cf6;
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-}
-
-.schedule-btn:hover {
-  background: #7c3aed;
-  transform: scale(1.05);
-}
-
-.schedule-btn .date-input {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-}
-
-.schedule-btn .date-input.visually-hidden {
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
-}
-
-.clear-date-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-  background: rgba(255, 255, 255, 0.15);
-  color: white;
-  border: none;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.clear-date-btn:hover {
-  background: rgba(239, 68, 68, 0.8);
   transform: scale(1.05);
 }
 
@@ -522,7 +390,6 @@ function handleDateChange(e) {
   }
 
   .livelib-btn,
-  .schedule-btn,
   .read-btn {
     width: 100%;
     justify-content: center;
