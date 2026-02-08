@@ -40,10 +40,15 @@ function handleScheduleClick(e) {
   e.stopPropagation()
   const input = e.target.closest('.schedule-btn')?.querySelector('input') || e.target
   if (input.tagName === 'INPUT') return
-  // Find the hidden input and click it
   const btn = e.currentTarget
   const hiddenInput = btn.querySelector('input[type="date"]')
-  if (hiddenInput) hiddenInput.showPicker()
+  if (hiddenInput) {
+    try {
+      hiddenInput.showPicker()
+    } catch {
+      hiddenInput.click()
+    }
+  }
 }
 
 function handleDateChange(e) {
@@ -264,7 +269,7 @@ const kinopoiskUrl = computed(() => {
               {{ dueDateFormatted || 'Запланировать' }}
               <input
                 type="date"
-                class="date-input visually-hidden"
+                class="date-input"
                 :value="movie.dueDate || ''"
                 @change="handleDateChange"
                 @click.stop
@@ -583,17 +588,7 @@ const kinopoiskUrl = computed(() => {
   cursor: pointer;
   top: 0;
   left: 0;
-}
-
-/* Visually hidden but accessible for screen readers */
-.schedule-btn .date-input.visually-hidden {
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
+  opacity: 0;
 }
 
 .clear-date-btn {
