@@ -1,8 +1,8 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { fetchMovies, completeTask, createTask, updateTaskDueDate, SECTIONS, SECTION_NAMES } from './services/todoist.js'
+import { fetchMovies, completeTask, createTask, updateTaskDueDate, setCorsProxy, SECTIONS, SECTION_NAMES } from './services/todoist.js'
 import { batchSearchMovies, getPosterUrl, clearTmdbCache, saveCacheToStorage } from './services/tmdb.js'
-import { fetchBooks, completeBookTask, createBookReviewTask, clearBooksCache } from './services/books.js'
+import { fetchBooks, completeBookTask, createBookReviewTask, clearBooksCache, setCorsProxy as setBooksCorsProxy } from './services/books.js'
 import { batchSearchBooks, getBookCoverUrl, clearOpenLibCache } from './services/openlib.js'
 import MovieCard from './components/MovieCard.vue'
 import MovieModal from './components/MovieModal.vue'
@@ -94,6 +94,13 @@ watch(
 // API Keys from localStorage
 const todoistToken = ref(localStorage.getItem('todoist_token') || '')
 const tmdbApiKey = ref(localStorage.getItem('tmdb_api_key') || '')
+const corsProxy = ref(localStorage.getItem('cors_proxy') || '')
+
+// Initialize CORS proxy on load
+if (corsProxy.value) {
+  setCorsProxy(corsProxy.value)
+  setBooksCorsProxy(corsProxy.value)
+}
 
 // Available sections for filter
 const availableSections = computed(() => {
@@ -733,6 +740,10 @@ async function handleBookRead(book) {
 function saveSettings(settings) {
   todoistToken.value = settings.todoistToken
   tmdbApiKey.value = settings.tmdbApiKey
+  corsProxy.value = settings.corsProxy || ''
+  localStorage.setItem('cors_proxy', corsProxy.value)
+  setCorsProxy(corsProxy.value)
+  setBooksCorsProxy(corsProxy.value)
   showSettings.value = false
   loadContent()
 }
@@ -1054,6 +1065,7 @@ onMounted(() => {
       v-if="showSettings"
       :todoist-token="todoistToken"
       :tmdb-api-key="tmdbApiKey"
+      :cors-proxy="corsProxy"
       @save="saveSettings"
       @close="showSettings = false"
     />

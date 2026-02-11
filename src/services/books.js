@@ -8,15 +8,31 @@ const BOOKS_PROJECT_NAME = '📚 Книги'
 let booksProjectId = null
 let booksSections = {}
 
+// CORS proxy URL (set via setCorsProxy)
+let corsProxyUrl = ''
+
+/**
+ * Set the CORS proxy URL for all Books API requests.
+ */
+export function setCorsProxy(proxyUrl) {
+  corsProxyUrl = proxyUrl ? proxyUrl.replace(/\/+$/, '') : ''
+}
+
+function applyProxy(url) {
+  if (!corsProxyUrl) return url
+  return `${corsProxyUrl}/${url}`
+}
+
 /**
  * Fetch with retry logic for network errors
  */
 async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+  const proxiedUrl = applyProxy(url)
   let lastError = null
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const response = await fetch(url, options)
+      const response = await fetch(proxiedUrl, options)
       return response
     } catch (error) {
       lastError = error
