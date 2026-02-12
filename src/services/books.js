@@ -53,21 +53,43 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3) {
 }
 
 /**
+ * Fetch all pages from a paginated API v1 endpoint.
+ */
+async function fetchAllPages(url, options = {}) {
+  const allResults = []
+  let cursor = null
+
+  do {
+    const separator = url.includes('?') ? '&' : '?'
+    const pageUrl = cursor ? `${url}${separator}cursor=${cursor}` : url
+    const response = await fetchWithRetry(pageUrl, options)
+
+    if (!response.ok) return { ok: false, status: response.status, results: [] }
+
+    const data = await response.json()
+    const results = Array.isArray(data) ? data : (data.results || [])
+    allResults.push(...results)
+    cursor = data.next_cursor || null
+  } while (cursor)
+
+  return { ok: true, status: 200, results: allResults }
+}
+
+/**
  * Find books project ID
  */
 async function findBooksProject(apiToken) {
   if (booksProjectId) return booksProjectId
 
-  const response = await fetchWithRetry(`${TODOIST_API_URL}/projects`, {
+  const data = await fetchAllPages(`${TODOIST_API_URL}/projects`, {
     headers: { 'Authorization': `Bearer ${apiToken}` }
   })
 
-  if (!response.ok) {
-    throw new Error(`Ошибка Todoist: ${response.status}`)
+  if (!data.ok) {
+    throw new Error(`Ошибка Todoist: ${data.status}`)
   }
 
-  const projects = await response.json()
-  const booksProject = projects.find(p => p.name.includes('Книги'))
+  const booksProject = data.results.find(p => p.name.includes('Книги'))
 
   if (!booksProject) {
     throw new Error('Проект "📚 Книги" не найден в Todoist')
@@ -82,17 +104,16 @@ async function findBooksProject(apiToken) {
  * Fetch sections for books project
  */
 async function fetchBooksSections(apiToken, projectId) {
-  const response = await fetchWithRetry(`${TODOIST_API_URL}/sections?project_id=${projectId}`, {
+  const data = await fetchAllPages(`${TODOIST_API_URL}/sections?project_id=${projectId}`, {
     headers: { 'Authorization': `Bearer ${apiToken}` }
   })
 
-  if (!response.ok) {
-    throw new Error(`Ошибка Todoist: ${response.status}`)
+  if (!data.ok) {
+    throw new Error(`Ошибка Todoist: ${data.status}`)
   }
 
-  const sections = await response.json()
   booksSections = {}
-  sections.forEach(section => {
+  data.results.forEach(section => {
     booksSections[section.id] = section.name
   })
 
@@ -243,22 +264,22 @@ export async function fetchBooks(apiToken) {
   const sections = await fetchBooksSections(apiToken, projectId)
 
   // Fetch tasks
-  const response = await fetchWithRetry(`${TODOIST_API_URL}/tasks?project_id=${projectId}`, {
+  const tasksData = await fetchAllPages(`${TODOIST_API_URL}/tasks?project_id=${projectId}`, {
     headers: { 'Authorization': `Bearer ${apiToken}` }
   })
 
-  if (!response.ok) {
-    if (response.status === 401) {
+  if (!tasksData.ok) {
+    if (tasksData.status === 401) {
       throw new Error('Неверный Todoist токен. Проверьте настройки.')
-    } else if (response.status === 403) {
+    } else if (tasksData.status === 403) {
       throw new Error('Нет доступа к проекту в Todoist.')
-    } else if (response.status >= 500) {
+    } else if (tasksData.status >= 500) {
       throw new Error('Сервер Todoist временно недоступен. Попробуйте позже.')
     }
-    throw new Error(`Ошибка Todoist: ${response.status}`)
+    throw new Error(`Ошибка Todoist: ${tasksData.status}`)
   }
 
-  const tasks = await response.json()
+  const tasks = tasksData.results
 
   // Filter and parse books
   const books = tasks

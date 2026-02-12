@@ -55,6 +55,30 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3) {
   throw new Error(`Ошибка сети: ${lastError?.message || 'не удалось подключиться'}. Проверьте интернет-соединение.`)
 }
 
+/**
+ * Fetch all pages from a paginated API v1 endpoint.
+ * Returns a flat array of all results.
+ */
+async function fetchAllPages(url, options = {}) {
+  const allResults = []
+  let cursor = null
+
+  do {
+    const separator = url.includes('?') ? '&' : '?'
+    const pageUrl = cursor ? `${url}${separator}cursor=${cursor}` : url
+    const response = await fetchWithRetry(pageUrl, options)
+
+    if (!response.ok) return { ok: false, status: response.status, results: [] }
+
+    const data = await response.json()
+    const results = Array.isArray(data) ? data : (data.results || [])
+    allResults.push(...results)
+    cursor = data.next_cursor || null
+  } while (cursor)
+
+  return { ok: true, status: 200, results: allResults }
+}
+
 // Section IDs
 export const SECTIONS = {
   RULES: '674GCv5g249xxp3F',
@@ -222,39 +246,38 @@ export async function fetchMovies(apiToken) {
   }
 
   // First fetch sections to get actual section IDs and names
-  const sectionsResponse = await fetchWithRetry(`${TODOIST_API_URL}/sections?project_id=${MOVIES_PROJECT_ID}`, {
+  const sectionsData = await fetchAllPages(`${TODOIST_API_URL}/sections?project_id=${MOVIES_PROJECT_ID}`, {
     headers: {
       'Authorization': `Bearer ${apiToken}`
     }
   })
 
   let actualSections = {}
-  if (sectionsResponse.ok) {
-    const sections = await sectionsResponse.json()
-    sections.forEach(section => {
+  if (sectionsData.ok) {
+    sectionsData.results.forEach(section => {
       actualSections[section.id] = section.name
     })
     console.log('Fetched sections:', actualSections)
   }
 
-  const response = await fetchWithRetry(`${TODOIST_API_URL}/tasks?project_id=${MOVIES_PROJECT_ID}`, {
+  const tasksData = await fetchAllPages(`${TODOIST_API_URL}/tasks?project_id=${MOVIES_PROJECT_ID}`, {
     headers: {
       'Authorization': `Bearer ${apiToken}`
     }
   })
 
-  if (!response.ok) {
-    if (response.status === 401) {
+  if (!tasksData.ok) {
+    if (tasksData.status === 401) {
       throw new Error('Неверный Todoist токен. Проверьте настройки.')
-    } else if (response.status === 403) {
+    } else if (tasksData.status === 403) {
       throw new Error('Нет доступа к проекту в Todoist.')
-    } else if (response.status >= 500) {
+    } else if (tasksData.status >= 500) {
       throw new Error('Сервер Todoist временно недоступен. Попробуйте позже.')
     }
-    throw new Error(`Ошибка Todoist: ${response.status}`)
+    throw new Error(`Ошибка Todoist: ${tasksData.status}`)
   }
 
-  const tasks = await response.json()
+  const tasks = tasksData.results
 
   // Filter out rules and subtasks, parse movie info
   const movies = tasks
@@ -359,16 +382,15 @@ export async function fetchSections(apiToken) {
     throw new Error('Todoist API token is required')
   }
 
-  const response = await fetchWithRetry(`${TODOIST_API_URL}/sections?project_id=${MOVIES_PROJECT_ID}`, {
+  const data = await fetchAllPages(`${TODOIST_API_URL}/sections?project_id=${MOVIES_PROJECT_ID}`, {
     headers: {
       'Authorization': `Bearer ${apiToken}`
     }
   })
 
-  if (!response.ok) {
-    throw new Error(`Ошибка Todoist: ${response.status}`)
+  if (!data.ok) {
+    throw new Error(`Ошибка Todoist: ${data.status}`)
   }
 
-  const sections = await response.json()
-  return sections.filter(s => s.id !== SECTIONS.RULES)
+  return data.results.filter(s => s.id !== SECTIONS.RULES)
 }
