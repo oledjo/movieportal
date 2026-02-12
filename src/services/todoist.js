@@ -15,7 +15,11 @@ let corsProxyUrl = ''
  *   'https://my-proxy.workers.dev/https://api.todoist.com/rest/v2/tasks'
  */
 export function setCorsProxy(proxyUrl) {
-  corsProxyUrl = proxyUrl ? proxyUrl.replace(/\/+$/, '') : ''
+  let url = proxyUrl ? proxyUrl.replace(/\/+$/, '') : ''
+  if (url && url.startsWith('http://')) {
+    url = url.replace('http://', 'https://')
+  }
+  corsProxyUrl = url
 }
 
 function applyProxy(url) {
