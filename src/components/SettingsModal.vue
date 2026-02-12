@@ -3,18 +3,21 @@ import { ref, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
   todoistToken: String,
-  tmdbApiKey: String
+  tmdbApiKey: String,
+  corsProxy: String
 })
 
 const emit = defineEmits(['save', 'close'])
 
 const localTodoistToken = ref(props.todoistToken)
 const localTmdbApiKey = ref(props.tmdbApiKey)
+const localCorsProxy = ref(props.corsProxy)
 
 function save() {
   emit('save', {
     todoistToken: localTodoistToken.value,
-    tmdbApiKey: localTmdbApiKey.value
+    tmdbApiKey: localTmdbApiKey.value,
+    corsProxy: localCorsProxy.value
   })
 }
 
@@ -85,6 +88,26 @@ onUnmounted(() => {
               Для постеров фильмов. Получите бесплатный ключ на
               <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">
                 TMDB
+              </a>
+            </p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
+              CORS Proxy URL
+              <span class="optional">(если Todoist не загружается)</span>
+            </label>
+            <input
+              type="text"
+              v-model="localCorsProxy"
+              class="form-input"
+              placeholder="https://your-proxy.workers.dev"
+            />
+            <p class="form-hint">
+              Если фильмы не загружаются из-за ошибки сети (CORS), укажите URL прокси.
+              Можно развернуть бесплатный Cloudflare Worker —
+              <a href="https://developers.cloudflare.com/workers/" target="_blank" rel="noopener">
+                инструкция
               </a>
             </p>
           </div>

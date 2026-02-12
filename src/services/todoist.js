@@ -4,16 +4,36 @@ const TODOIST_API_URL = 'https://api.todoist.com/rest/v2'
 // Project ID for "🍿 Фильмы"
 const MOVIES_PROJECT_ID = '6Crg4FqFXpXHmmXm'
 
+// CORS proxy URL (set via setCorsProxy)
+let corsProxyUrl = ''
+
+/**
+ * Set the CORS proxy URL for all Todoist API requests.
+ * The proxy URL is prepended to the Todoist API URL.
+ * Example: 'https://my-proxy.workers.dev/' will turn
+ *   'https://api.todoist.com/rest/v2/tasks' into
+ *   'https://my-proxy.workers.dev/https://api.todoist.com/rest/v2/tasks'
+ */
+export function setCorsProxy(proxyUrl) {
+  corsProxyUrl = proxyUrl ? proxyUrl.replace(/\/+$/, '') : ''
+}
+
+function applyProxy(url) {
+  if (!corsProxyUrl) return url
+  return `${corsProxyUrl}/${url}`
+}
+
 /**
  * Fetch with retry logic for network errors
  * Retries up to 3 times with exponential backoff
  */
 async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+  const proxiedUrl = applyProxy(url)
   let lastError = null
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const response = await fetch(url, options)
+      const response = await fetch(proxiedUrl, options)
       return response
     } catch (error) {
       lastError = error
