@@ -1,5 +1,5 @@
 // Todoist API Service
-const TODOIST_API_URL = 'https://api.todoist.com/rest/v2'
+const TODOIST_API_URL = 'https://api.todoist.com/api/v1'
 
 // Project ID for "🍿 Фильмы"
 const MOVIES_PROJECT_ID = '6Crg4FqFXpXHmmXm'

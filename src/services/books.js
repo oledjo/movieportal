@@ -1,5 +1,5 @@
 // Todoist Books API Service
-const TODOIST_API_URL = 'https://api.todoist.com/rest/v2'
+const TODOIST_API_URL = 'https://api.todoist.com/api/v1'
 
 // Books project name to search for
 const BOOKS_PROJECT_NAME = '📚 Книги'
