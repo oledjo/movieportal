@@ -1,5 +1,5 @@
 // Todoist API Service
-const TODOIST_API_URL = 'https://api.todoist.com/rest/v2'
+const TODOIST_API_URL = 'https://api.todoist.com/api/v1'
 
 // Project ID for "🍿 Фильмы"
 const MOVIES_PROJECT_ID = '6Crg4FqFXpXHmmXm'
@@ -15,7 +15,11 @@ let corsProxyUrl = ''
  *   'https://my-proxy.workers.dev/https://api.todoist.com/rest/v2/tasks'
  */
 export function setCorsProxy(proxyUrl) {
-  corsProxyUrl = proxyUrl ? proxyUrl.replace(/\/+$/, '') : ''
+  let url = proxyUrl ? proxyUrl.replace(/\/+$/, '') : ''
+  if (url && url.startsWith('http://')) {
+    url = url.replace('http://', 'https://')
+  }
+  corsProxyUrl = url
 }
 
 function applyProxy(url) {

@@ -1,5 +1,5 @@
 // Todoist Books API Service
-const TODOIST_API_URL = 'https://api.todoist.com/rest/v2'
+const TODOIST_API_URL = 'https://api.todoist.com/api/v1'
 
 // Books project name to search for
 const BOOKS_PROJECT_NAME = '📚 Книги'
@@ -15,7 +15,11 @@ let corsProxyUrl = ''
  * Set the CORS proxy URL for all Books API requests.
  */
 export function setCorsProxy(proxyUrl) {
-  corsProxyUrl = proxyUrl ? proxyUrl.replace(/\/+$/, '') : ''
+  let url = proxyUrl ? proxyUrl.replace(/\/+$/, '') : ''
+  if (url && url.startsWith('http://')) {
+    url = url.replace('http://', 'https://')
+  }
+  corsProxyUrl = url
 }
 
 function applyProxy(url) {
