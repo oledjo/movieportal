@@ -664,10 +664,10 @@ onUnmounted(() => {
   position: absolute;
   width: 100%;
   height: 100%;
-  cursor: pointer;
   top: 0;
   left: 0;
   opacity: 0;
+  pointer-events: none;
 }
 
 .clear-date-btn {
