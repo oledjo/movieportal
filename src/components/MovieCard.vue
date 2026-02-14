@@ -38,8 +38,7 @@ const dueDateFormatted = computed(() => {
 
 function handleScheduleClick(e) {
   e.stopPropagation()
-  const input = e.target.closest('.schedule-btn')?.querySelector('input') || e.target
-  if (input.tagName === 'INPUT') return
+  if (e.target.tagName === 'INPUT') return
   const btn = e.currentTarget
   const hiddenInput = btn.querySelector('input[type="date"]')
   if (hiddenInput) {
