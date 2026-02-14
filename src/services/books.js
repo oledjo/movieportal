@@ -358,9 +358,10 @@ export async function updateBookDueDate(apiToken, taskId, dueDate) {
     throw new Error('Todoist API token is required')
   }
 
+  // Use due object for API v1: { date: "YYYY-MM-DD" } for setting, null for clearing
   const body = dueDate
-    ? { due_date: dueDate }
-    : { due_string: 'no date' }
+    ? { due: { date: dueDate } }
+    : { due: null }
 
   const response = await fetchWithRetry(`${TODOIST_API_URL}/tasks/${taskId}`, {
     method: 'POST',
