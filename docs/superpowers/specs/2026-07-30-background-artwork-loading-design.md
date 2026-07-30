@@ -42,4 +42,3 @@ Run the full automated suite, production build, and whitespace checks. Preserve 
 ## Scope
 
 Do not change Todoist caching, manual-refresh semantics, artwork cache expiry, batch sizes, artificial artwork delays, filters, scheduling, or Todoist write behavior. Optimizing the internal artwork batch loops is a separate task.
-
