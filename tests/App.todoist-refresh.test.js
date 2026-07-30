@@ -117,6 +117,7 @@ describe('Todoist cached loading', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -165,5 +166,100 @@ describe('Todoist cached loading', () => {
     await flushPromises()
     expect(serviceMocks.fetchMovies).toHaveBeenCalledOnce()
     expect(serviceMocks.fetchBooks).not.toHaveBeenCalled()
+  })
+
+  it('refreshes only movies while the movies tab is active', async () => {
+    writeTodoistCache('movies', [{ id: 'old', title: 'Old Movie', sectionId: 'movies' }])
+    writeTodoistCache('books', [{ id: 'book', title: 'Cached Book', sectionId: 'books' }])
+    serviceMocks.fetchMovies.mockResolvedValue([{ id: 'new', title: 'New Movie', sectionId: 'movies' }])
+    const wrapper = mountApp()
+    await flushPromises()
+
+    await wrapper.get('[aria-label="Обновить фильмы из Todoist"]').trigger('click')
+    await flushPromises()
+
+    expect(serviceMocks.fetchMovies).toHaveBeenCalledOnce()
+    expect(serviceMocks.fetchBooks).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('New Movie')
+  })
+
+  it('keeps cached movies visible when manual refresh fails', async () => {
+    writeTodoistCache('movies', [{ id: 'old', title: 'Old Movie', sectionId: 'movies' }])
+    serviceMocks.fetchMovies.mockRejectedValue(new Error('offline'))
+    const wrapper = mountApp()
+    await flushPromises()
+
+    await wrapper.get('[aria-label="Обновить фильмы из Todoist"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Old Movie')
+    expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items[0].id).toBe('old')
+    expect(wrapper.text()).toContain('offline')
+  })
+
+  it('persists watched removal and Undo restoration', async () => {
+    const movie = { id: 'm1', title: 'Movie', sectionId: 'movies' }
+    writeTodoistCache('movies', [movie])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    const wrapper = mountApp()
+    await flushPromises()
+
+    wrapper.findComponent(MovieCardStub).vm.$emit('watched', movie)
+    await flushPromises()
+    expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items).toEqual([])
+
+    await wrapper.get('.toast-action-stub').trigger('click')
+    expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items).toEqual([movie])
+  })
+
+  it('restores the movie cache when the delayed Todoist write fails', async () => {
+    vi.useFakeTimers()
+    const movie = { id: 'm1', title: 'Movie', sectionId: 'movies' }
+    writeTodoistCache('movies', [movie])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    serviceMocks.completeTask.mockRejectedValue(new Error('write failed'))
+    const wrapper = mountApp()
+    await flushPromises()
+
+    wrapper.findComponent(MovieCardStub).vm.$emit('watched', movie)
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+
+    expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items).toEqual([movie])
+  })
+
+  it('persists a scheduled movie date', async () => {
+    const movie = { id: 'm1', title: 'Movie', sectionId: 'movies', dueDate: null }
+    writeTodoistCache('movies', [movie])
+    serviceMocks.updateTaskDueDate.mockResolvedValue(undefined)
+    const wrapper = mountApp()
+    await flushPromises()
+
+    wrapper.findComponent(MovieCardStub).vm.$emit('schedule', {
+      movie,
+      date: '2026-08-01'
+    })
+    await flushPromises()
+
+    expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items[0].dueDate)
+      .toBe('2026-08-01')
+  })
+
+  it('persists read-book removal and Undo restoration', async () => {
+    const book = { id: 'b1', title: 'Book', sectionId: 'books' }
+    writeTodoistCache('movies', [])
+    writeTodoistCache('books', [book])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    const wrapper = mountApp()
+    await flushPromises()
+    await wrapper.get('[aria-label="Показать книги"]').trigger('click')
+    await flushPromises()
+
+    wrapper.findComponent(BookCardStub).vm.$emit('read', book)
+    await flushPromises()
+    expect(JSON.parse(localStorage.getItem('todoist_books_cache')).items).toEqual([])
+
+    await wrapper.get('.toast-action-stub').trigger('click')
+    expect(JSON.parse(localStorage.getItem('todoist_books_cache')).items).toEqual([book])
   })
 })

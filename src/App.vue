@@ -377,7 +377,7 @@ async function loadContent(options = {}) {
 }
 
 // Load movies
-async function loadMovies({ forceRefresh = false } = {}) {
+async function loadMovies({ forceRefresh = false, loadArtwork = true } = {}) {
   if (!todoistToken.value) {
     loading.value = false
     showSettings.value = true
@@ -397,7 +397,7 @@ async function loadMovies({ forceRefresh = false } = {}) {
     localStorage.setItem('todoist_token', todoistToken.value)
 
     // Load posters if TMDB key is available
-    if (tmdbApiKey.value) {
+    if (loadArtwork && tmdbApiKey.value) {
       await loadPosters()
     }
     return true
@@ -411,7 +411,7 @@ async function loadMovies({ forceRefresh = false } = {}) {
 }
 
 // Load books
-async function loadBooks({ forceRefresh = false } = {}) {
+async function loadBooks({ forceRefresh = false, loadArtwork = true } = {}) {
   if (!todoistToken.value) {
     loading.value = false
     showSettings.value = true
@@ -431,7 +431,7 @@ async function loadBooks({ forceRefresh = false } = {}) {
     localStorage.setItem('todoist_token', todoistToken.value)
 
     // Load book covers
-    await loadBookCovers()
+    if (loadArtwork) await loadBookCovers()
     return true
   } catch (e) {
     error.value = e.message
@@ -578,6 +578,7 @@ async function handleWatched(movie) {
 
     // Remove movie from local list immediately (optimistic update)
     movies.value = movies.value.filter(m => m.id !== movie.id)
+    writeTodoistCache('movies', movies.value)
 
     // Close modal if this movie was open
     if (selectedMovie.value && selectedMovie.value.id === movie.id) {
@@ -596,6 +597,7 @@ async function handleWatched(movie) {
         // Undo action
         clearTimeout(watchedTimeout)
         movies.value = [movieToRemove, ...movies.value]
+        writeTodoistCache('movies', movies.value)
         pendingWatched.value = null
         hideToast()
         showToast('Действие отменено', 'info')
@@ -613,6 +615,7 @@ async function handleWatched(movie) {
           console.error('Error completing task:', e)
           // Restore movie on error
           movies.value = [movieToRemove, ...movies.value]
+          writeTodoistCache('movies', movies.value)
           showToast('Ошибка при сохранении: ' + e.message, 'error')
         }
       }
@@ -645,6 +648,7 @@ async function handleSchedule({ movie, date }) {
     const movieIndex = movies.value.findIndex(m => m.id === movie.id)
     if (movieIndex !== -1) {
       movies.value[movieIndex].dueDate = date
+      writeTodoistCache('movies', movies.value)
     }
 
     // Update selected movie if open
@@ -668,25 +672,30 @@ async function handleSchedule({ movie, date }) {
   }
 }
 
-// Reload posters (clear cache and reload)
-async function reloadPosters() {
-  if (contentMode.value === 'movies') {
-    if (!tmdbApiKey.value) {
-      showToast('Сначала укажите TMDB API ключ в настройках', 'error', 'Настройки', () => {
-        hideToast()
-        showSettings.value = true
-      })
-      return
-    }
+async function refreshContent() {
+  const mode = contentMode.value
+  const previousError = error.value
+  const succeeded = mode === 'movies'
+    ? await loadMovies({ forceRefresh: true, loadArtwork: false })
+    : await loadBooks({ forceRefresh: true, loadArtwork: false })
+
+  if (!succeeded) {
+    const message = error.value || 'Не удалось обновить данные Todoist'
+    error.value = previousError
+    showToast('Ошибка обновления: ' + message, 'error')
+    return
+  }
+
+  if (mode === 'movies') {
     clearTmdbCache()
     posters.value.clear()
-    await loadPosters()
-    showToast('Постеры перезагружены', 'success')
+    if (tmdbApiKey.value) await loadPosters()
+    showToast('Фильмы обновлены', 'success')
   } else {
     clearOpenLibCache()
     bookCovers.value.clear()
     await loadBookCovers()
-    showToast('Обложки перезагружены', 'success')
+    showToast('Книги обновлены', 'success')
   }
 }
 
@@ -710,6 +719,7 @@ async function handleBookRead(book) {
 
     // Remove book from local list immediately
     books.value = books.value.filter(b => b.id !== book.id)
+    writeTodoistCache('books', books.value)
 
     // Close modal if this book was open
     if (selectedBook.value && selectedBook.value.id === book.id) {
@@ -727,6 +737,7 @@ async function handleBookRead(book) {
       () => {
         clearTimeout(watchedTimeout)
         books.value = [bookToRemove, ...books.value]
+        writeTodoistCache('books', books.value)
         pendingWatched.value = null
         hideToast()
         showToast('Действие отменено', 'info')
@@ -743,6 +754,7 @@ async function handleBookRead(book) {
         } catch (e) {
           console.error('Error completing book task:', e)
           books.value = [bookToRemove, ...books.value]
+          writeTodoistCache('books', books.value)
           showToast('Ошибка при сохранении: ' + e.message, 'error')
         }
       }
@@ -923,13 +935,13 @@ onMounted(() => {
             <span class="stats-badge">{{ currentStats.value.filtered }}/{{ currentStats.value.total }}</span>
           </div>
           <button
-            v-if="!loading && currentItemsCount > 0 && (contentMode === 'books' || tmdbApiKey)"
+            v-if="!loading && todoistToken"
             class="reload-posters-btn"
-            @click="reloadPosters"
-            :disabled="loadingPosters"
-            :class="{ 'loading': loadingPosters }"
-            :title="contentMode === 'movies' ? 'Перезагрузить постеры' : 'Перезагрузить обложки'"
-            :aria-label="contentMode === 'movies' ? 'Перезагрузить постеры фильмов' : 'Перезагрузить обложки книг'"
+            @click="refreshContent"
+            :disabled="loading || loadingPosters"
+            :class="{ loading: loading || loadingPosters }"
+            :title="contentMode === 'movies' ? 'Обновить фильмы' : 'Обновить книги'"
+            :aria-label="contentMode === 'movies' ? 'Обновить фильмы из Todoist' : 'Обновить книги из Todoist'"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
