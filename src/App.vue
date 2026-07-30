@@ -51,6 +51,28 @@ const toast = ref({
 // Undo state for watched movies
 const pendingWatched = ref(null)
 let watchedTimeout = null
+let todoistAccountGeneration = 0
+let todoistMutationGeneration = 0
+let pendingMutationGeneration = null
+
+function isCurrentTodoistAccount(token, generation) {
+  return todoistToken.value === token && todoistAccountGeneration === generation
+}
+
+function invalidatePendingWatched() {
+  if (!pendingWatched.value) return
+  clearTimeout(watchedTimeout)
+  watchedTimeout = null
+  pendingWatched.value = null
+  pendingMutationGeneration = null
+  hideToast()
+}
+
+function isPendingTodoistMutation(token, accountGeneration, mutationGeneration, itemId) {
+  return isCurrentTodoistAccount(token, accountGeneration) &&
+    pendingMutationGeneration === mutationGeneration &&
+    pendingWatched.value?.id === itemId
+}
 
 function showToast(message, type = 'success', actionText = null, actionCallback = null) {
   toast.value = { show: true, message, type, actionText, actionCallback }
@@ -570,11 +592,20 @@ async function handleWatched(movie) {
   const confirmed = confirm(`Отметить «${movie.title}» как просмотренный?\n\nБудет создана задача «Написать отзыв на фильм».`)
   if (!confirmed) return
 
+  const mutationToken = todoistToken.value
+  const mutationGeneration = todoistAccountGeneration
+  const pendingGeneration = ++todoistMutationGeneration
   watchedLoading.value = true
 
   try {
     // Store movie for potential undo
     const movieToRemove = { ...movie }
+    const isPendingMutation = () => isPendingTodoistMutation(
+      mutationToken,
+      mutationGeneration,
+      pendingGeneration,
+      movieToRemove.id
+    )
 
     // Remove movie from local list immediately (optimistic update)
     movies.value = movies.value.filter(m => m.id !== movie.id)
@@ -587,6 +618,7 @@ async function handleWatched(movie) {
 
     // Show toast with undo option
     pendingWatched.value = movieToRemove
+    pendingMutationGeneration = pendingGeneration
     clearTimeout(watchedTimeout)
 
     showToast(
@@ -594,11 +626,14 @@ async function handleWatched(movie) {
       'success',
       'Отменить',
       () => {
+        if (!isPendingMutation()) return
         // Undo action
         clearTimeout(watchedTimeout)
+        watchedTimeout = null
         movies.value = [movieToRemove, ...movies.value]
         writeTodoistCache('movies', movies.value)
         pendingWatched.value = null
+        pendingMutationGeneration = null
         hideToast()
         showToast('Действие отменено', 'info')
       }
@@ -606,16 +641,28 @@ async function handleWatched(movie) {
 
     // Complete action after delay (allows undo)
     watchedTimeout = setTimeout(async () => {
-      if (pendingWatched.value && pendingWatched.value.id === movieToRemove.id) {
+      if (isPendingMutation()) {
         try {
-          await completeTask(todoistToken.value, movieToRemove.id)
-          await createTask(todoistToken.value, `Написать отзыв на фильм «${movieToRemove.title}»`)
+          await completeTask(mutationToken, movieToRemove.id)
+          if (!isPendingMutation()) return
+          await createTask(mutationToken, `Написать отзыв на фильм «${movieToRemove.title}»`)
+          if (!isPendingMutation()) return
+          movies.value = movies.value.filter(movie => movie.id !== movieToRemove.id)
+          writeTodoistCache('movies', movies.value)
           pendingWatched.value = null
+          pendingMutationGeneration = null
+          watchedTimeout = null
         } catch (e) {
+          if (!isPendingMutation()) return
           console.error('Error completing task:', e)
           // Restore movie on error
-          movies.value = [movieToRemove, ...movies.value]
+          if (!movies.value.some(movie => movie.id === movieToRemove.id)) {
+            movies.value = [movieToRemove, ...movies.value]
+          }
           writeTodoistCache('movies', movies.value)
+          pendingWatched.value = null
+          pendingMutationGeneration = null
+          watchedTimeout = null
           showToast('Ошибка при сохранении: ' + e.message, 'error')
         }
       }
@@ -673,6 +720,8 @@ async function handleSchedule({ movie, date }) {
 }
 
 async function refreshContent() {
+  if (pendingWatched.value) return
+
   const mode = contentMode.value
   const previousError = error.value
   const succeeded = mode === 'movies'
@@ -712,10 +761,19 @@ async function handleBookRead(book) {
   const confirmed = confirm(`Отметить «${book.title}» как прочитанную?\n\nБудет создана задача «Написать отзыв на книгу».`)
   if (!confirmed) return
 
+  const mutationToken = todoistToken.value
+  const mutationGeneration = todoistAccountGeneration
+  const pendingGeneration = ++todoistMutationGeneration
   watchedLoading.value = true
 
   try {
     const bookToRemove = { ...book }
+    const isPendingMutation = () => isPendingTodoistMutation(
+      mutationToken,
+      mutationGeneration,
+      pendingGeneration,
+      bookToRemove.id
+    )
 
     // Remove book from local list immediately
     books.value = books.value.filter(b => b.id !== book.id)
@@ -728,6 +786,7 @@ async function handleBookRead(book) {
 
     // Show toast with undo option
     pendingWatched.value = bookToRemove
+    pendingMutationGeneration = pendingGeneration
     clearTimeout(watchedTimeout)
 
     showToast(
@@ -735,10 +794,13 @@ async function handleBookRead(book) {
       'success',
       'Отменить',
       () => {
+        if (!isPendingMutation()) return
         clearTimeout(watchedTimeout)
+        watchedTimeout = null
         books.value = [bookToRemove, ...books.value]
         writeTodoistCache('books', books.value)
         pendingWatched.value = null
+        pendingMutationGeneration = null
         hideToast()
         showToast('Действие отменено', 'info')
       }
@@ -746,15 +808,27 @@ async function handleBookRead(book) {
 
     // Complete action after delay
     watchedTimeout = setTimeout(async () => {
-      if (pendingWatched.value && pendingWatched.value.id === bookToRemove.id) {
+      if (isPendingMutation()) {
         try {
-          await completeBookTask(todoistToken.value, bookToRemove.id)
-          await createBookReviewTask(todoistToken.value, bookToRemove.title)
-          pendingWatched.value = null
-        } catch (e) {
-          console.error('Error completing book task:', e)
-          books.value = [bookToRemove, ...books.value]
+          await completeBookTask(mutationToken, bookToRemove.id)
+          if (!isPendingMutation()) return
+          await createBookReviewTask(mutationToken, bookToRemove.title)
+          if (!isPendingMutation()) return
+          books.value = books.value.filter(book => book.id !== bookToRemove.id)
           writeTodoistCache('books', books.value)
+          pendingWatched.value = null
+          pendingMutationGeneration = null
+          watchedTimeout = null
+        } catch (e) {
+          if (!isPendingMutation()) return
+          console.error('Error completing book task:', e)
+          if (!books.value.some(book => book.id === bookToRemove.id)) {
+            books.value = [bookToRemove, ...books.value]
+          }
+          writeTodoistCache('books', books.value)
+          pendingWatched.value = null
+          pendingMutationGeneration = null
+          watchedTimeout = null
           showToast('Ошибка при сохранении: ' + e.message, 'error')
         }
       }
@@ -770,8 +844,13 @@ async function handleBookRead(book) {
 // Save settings
 function saveSettings(settings) {
   const tokenChanged = todoistToken.value !== settings.todoistToken
+  if (tokenChanged) {
+    todoistAccountGeneration += 1
+    invalidatePendingWatched()
+    clearTodoistCaches()
+    clearBooksCache()
+  }
   todoistToken.value = settings.todoistToken
-  if (tokenChanged) clearTodoistCaches()
   tmdbApiKey.value = settings.tmdbApiKey
   corsProxy.value = settings.corsProxy || ''
   localStorage.setItem('cors_proxy', corsProxy.value)
@@ -938,7 +1017,7 @@ onMounted(() => {
             v-if="!loading && todoistToken"
             class="reload-posters-btn"
             @click="refreshContent"
-            :disabled="loading || loadingPosters"
+            :disabled="loading || loadingPosters || pendingWatched"
             :class="{ loading: loading || loadingPosters }"
             :title="contentMode === 'movies' ? 'Обновить фильмы' : 'Обновить книги'"
             :aria-label="contentMode === 'movies' ? 'Обновить фильмы из Todoist' : 'Обновить книги из Todoist'"

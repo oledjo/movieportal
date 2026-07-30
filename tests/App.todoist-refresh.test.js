@@ -15,7 +15,8 @@ const serviceMocks = vi.hoisted(() => ({
   batchSearchMovies: vi.fn(),
   batchSearchBooks: vi.fn(),
   clearTmdbCache: vi.fn(),
-  clearOpenLibCache: vi.fn()
+  clearOpenLibCache: vi.fn(),
+  clearBooksCache: vi.fn()
 }))
 
 vi.mock('../src/services/todoist.js', () => ({
@@ -32,7 +33,7 @@ vi.mock('../src/services/books.js', () => ({
   fetchBooks: serviceMocks.fetchBooks,
   completeBookTask: serviceMocks.completeBookTask,
   createBookReviewTask: serviceMocks.createBookReviewTask,
-  clearBooksCache: vi.fn(),
+  clearBooksCache: serviceMocks.clearBooksCache,
   setCorsProxy: vi.fn()
 }))
 
@@ -168,6 +169,29 @@ describe('Todoist cached loading', () => {
     expect(serviceMocks.fetchBooks).not.toHaveBeenCalled()
   })
 
+  it('clears Books account metadata before reloading Books for a changed token', async () => {
+    storage.setItem('content_mode', 'books')
+    serviceMocks.fetchBooks
+      .mockResolvedValueOnce([{ id: 'b1', title: 'Old Account Book', sectionId: 'books' }])
+      .mockResolvedValueOnce([{ id: 'b2', title: 'New Account Book', sectionId: 'books' }])
+    const wrapper = mountApp()
+    await flushPromises()
+    expect(serviceMocks.fetchBooks).toHaveBeenCalledWith('token')
+
+    await wrapper.get('[aria-label="Открыть настройки приложения"]').trigger('click')
+    wrapper.findComponent(SettingsModalStub).vm.$emit('save', {
+      todoistToken: 'new-token',
+      tmdbApiKey: '',
+      corsProxy: ''
+    })
+    await flushPromises()
+
+    expect(serviceMocks.clearBooksCache).toHaveBeenCalledOnce()
+    expect(serviceMocks.clearBooksCache.mock.invocationCallOrder[0])
+      .toBeLessThan(serviceMocks.fetchBooks.mock.invocationCallOrder[1])
+    expect(serviceMocks.fetchBooks).toHaveBeenLastCalledWith('new-token')
+  })
+
   it('refreshes only movies while the movies tab is active', async () => {
     writeTodoistCache('movies', [{ id: 'old', title: 'Old Movie', sectionId: 'movies' }])
     writeTodoistCache('books', [{ id: 'book', title: 'Cached Book', sectionId: 'books' }])
@@ -195,6 +219,99 @@ describe('Todoist cached loading', () => {
     expect(wrapper.text()).toContain('Old Movie')
     expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items[0].id).toBe('old')
     expect(wrapper.text()).toContain('offline')
+  })
+
+  it('refreshes Books and clears book artwork only after Todoist succeeds', async () => {
+    const oldBook = { id: 'old', title: 'Old Book', sectionId: 'books' }
+    const newBook = { id: 'new', title: 'New Book', sectionId: 'books' }
+    writeTodoistCache('movies', [])
+    writeTodoistCache('books', [oldBook])
+    const wrapper = mountApp()
+    await flushPromises()
+    await wrapper.get('[aria-label="Показать книги"]').trigger('click')
+    await flushPromises()
+    serviceMocks.fetchBooks.mockClear()
+    serviceMocks.batchSearchBooks.mockClear()
+    serviceMocks.clearOpenLibCache.mockClear()
+    serviceMocks.fetchBooks.mockResolvedValue([newBook])
+
+    await wrapper.get('[aria-label="Обновить книги из Todoist"]').trigger('click')
+    await flushPromises()
+
+    expect(serviceMocks.fetchBooks).toHaveBeenCalledOnce()
+    expect(serviceMocks.fetchMovies).not.toHaveBeenCalled()
+    expect(serviceMocks.clearOpenLibCache).toHaveBeenCalledOnce()
+    expect(serviceMocks.clearOpenLibCache.mock.invocationCallOrder[0])
+      .toBeGreaterThan(serviceMocks.fetchBooks.mock.invocationCallOrder[0])
+    expect(serviceMocks.batchSearchBooks).toHaveBeenCalledOnce()
+    expect(wrapper.text()).toContain('New Book')
+    expect(JSON.parse(localStorage.getItem('todoist_books_cache')).items).toEqual([newBook])
+  })
+
+  it('preserves Books and its artwork cache when Todoist refresh fails', async () => {
+    const oldBook = { id: 'old', title: 'Old Book', sectionId: 'books' }
+    writeTodoistCache('movies', [])
+    writeTodoistCache('books', [oldBook])
+    const wrapper = mountApp()
+    await flushPromises()
+    await wrapper.get('[aria-label="Показать книги"]').trigger('click')
+    await flushPromises()
+    serviceMocks.fetchBooks.mockClear()
+    serviceMocks.batchSearchBooks.mockClear()
+    serviceMocks.clearOpenLibCache.mockClear()
+    serviceMocks.fetchBooks.mockRejectedValue(new Error('books offline'))
+
+    await wrapper.get('[aria-label="Обновить книги из Todoist"]').trigger('click')
+    await flushPromises()
+
+    expect(serviceMocks.clearOpenLibCache).not.toHaveBeenCalled()
+    expect(serviceMocks.batchSearchBooks).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Old Book')
+    expect(wrapper.text()).toContain('books offline')
+    expect(JSON.parse(localStorage.getItem('todoist_books_cache')).items).toEqual([oldBook])
+  })
+
+  it('disables movie refresh while a watched action can still be undone', async () => {
+    vi.useFakeTimers()
+    const movie = { id: 'm1', title: 'Movie', sectionId: 'movies' }
+    writeTodoistCache('movies', [movie])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    const wrapper = mountApp()
+    await flushPromises()
+
+    wrapper.findComponent(MovieCardStub).vm.$emit('watched', movie)
+    await flushPromises()
+
+    const refreshButton = wrapper.get('[aria-label="Обновить фильмы из Todoist"]')
+    expect(refreshButton.attributes('disabled')).toBeDefined()
+    await refreshButton.trigger('click')
+    expect(serviceMocks.fetchMovies).not.toHaveBeenCalled()
+  })
+
+  it('removes a watched movie reintroduced by an already-running refresh after delayed success', async () => {
+    vi.useFakeTimers()
+    const movie = { id: 'm1', title: 'Movie', sectionId: 'movies' }
+    writeTodoistCache('movies', [movie])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    let resolveRefresh
+    serviceMocks.fetchMovies.mockImplementation(() => new Promise(resolve => {
+      resolveRefresh = resolve
+    }))
+    const wrapper = mountApp()
+    await flushPromises()
+
+    const movieCard = wrapper.findComponent(MovieCardStub)
+    wrapper.get('[aria-label="Обновить фильмы из Todoist"]').trigger('click')
+    movieCard.vm.$emit('watched', movie)
+    resolveRefresh([movie])
+    await flushPromises()
+    expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items).toEqual([movie])
+
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+
+    expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items).toEqual([])
+    expect(wrapper.text()).not.toContain('Movie')
   })
 
   it('persists watched removal and Undo restoration', async () => {
@@ -226,6 +343,71 @@ describe('Todoist cached loading', () => {
     await flushPromises()
 
     expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items).toEqual([movie])
+    expect(wrapper.get('[aria-label="Обновить фильмы из Todoist"]').attributes('disabled'))
+      .toBeUndefined()
+  })
+
+  it('cancels a pending watched action when the Todoist token changes', async () => {
+    vi.useFakeTimers()
+    const movie = { id: 'm1', title: 'Old Account Movie', sectionId: 'movies' }
+    const newMovie = { id: 'm2', title: 'New Account Movie', sectionId: 'movies' }
+    writeTodoistCache('movies', [movie])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    serviceMocks.fetchMovies.mockResolvedValue([newMovie])
+    const wrapper = mountApp()
+    await flushPromises()
+
+    wrapper.findComponent(MovieCardStub).vm.$emit('watched', movie)
+    await flushPromises()
+    expect(wrapper.find('.toast-action-stub').exists()).toBe(true)
+
+    await wrapper.get('[aria-label="Открыть настройки приложения"]').trigger('click')
+    wrapper.findComponent(SettingsModalStub).vm.$emit('save', {
+      todoistToken: 'new-token',
+      tmdbApiKey: '',
+      corsProxy: ''
+    })
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+
+    expect(wrapper.find('.toast-action-stub').exists()).toBe(false)
+    expect(serviceMocks.completeTask).not.toHaveBeenCalled()
+    expect(serviceMocks.createTask).not.toHaveBeenCalled()
+    expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items).toEqual([newMovie])
+  })
+
+  it('does not continue an in-flight watched action after the Todoist token changes', async () => {
+    vi.useFakeTimers()
+    const movie = { id: 'm1', title: 'Old Account Movie', sectionId: 'movies' }
+    const newMovie = { id: 'm2', title: 'New Account Movie', sectionId: 'movies' }
+    writeTodoistCache('movies', [movie])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    let resolveCompletion
+    serviceMocks.completeTask.mockImplementation(() => new Promise(resolve => {
+      resolveCompletion = resolve
+    }))
+    const wrapper = mountApp()
+    await flushPromises()
+
+    wrapper.findComponent(MovieCardStub).vm.$emit('watched', movie)
+    vi.advanceTimersByTime(5000)
+    await Promise.resolve()
+    expect(serviceMocks.completeTask).toHaveBeenCalledWith('token', movie.id)
+
+    serviceMocks.fetchMovies.mockResolvedValue([newMovie])
+    await wrapper.get('[aria-label="Открыть настройки приложения"]').trigger('click')
+    wrapper.findComponent(SettingsModalStub).vm.$emit('save', {
+      todoistToken: 'new-token',
+      tmdbApiKey: '',
+      corsProxy: ''
+    })
+    await flushPromises()
+    resolveCompletion()
+    await flushPromises()
+
+    expect(serviceMocks.createTask).not.toHaveBeenCalled()
+    expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items).toEqual([newMovie])
   })
 
   it('persists a scheduled movie date', async () => {
@@ -261,5 +443,91 @@ describe('Todoist cached loading', () => {
 
     await wrapper.get('.toast-action-stub').trigger('click')
     expect(JSON.parse(localStorage.getItem('todoist_books_cache')).items).toEqual([book])
+  })
+
+  it('disables book refresh while a read action can still be undone', async () => {
+    vi.useFakeTimers()
+    const book = { id: 'b1', title: 'Book', sectionId: 'books' }
+    writeTodoistCache('movies', [])
+    writeTodoistCache('books', [book])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    const wrapper = mountApp()
+    await flushPromises()
+    await wrapper.get('[aria-label="Показать книги"]').trigger('click')
+    await flushPromises()
+
+    wrapper.findComponent(BookCardStub).vm.$emit('read', book)
+    await flushPromises()
+
+    const refreshButton = wrapper.get('[aria-label="Обновить книги из Todoist"]')
+    expect(refreshButton.attributes('disabled')).toBeDefined()
+    await refreshButton.trigger('click')
+    expect(serviceMocks.fetchBooks).not.toHaveBeenCalled()
+  })
+
+  it('removes a read book reintroduced by an already-running refresh after delayed success', async () => {
+    vi.useFakeTimers()
+    const book = { id: 'b1', title: 'Book', sectionId: 'books' }
+    writeTodoistCache('movies', [])
+    writeTodoistCache('books', [book])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    const wrapper = mountApp()
+    await flushPromises()
+    await wrapper.get('[aria-label="Показать книги"]').trigger('click')
+    await flushPromises()
+
+    let resolveRefresh
+    serviceMocks.fetchBooks.mockImplementation(() => new Promise(resolve => {
+      resolveRefresh = resolve
+    }))
+    const bookCard = wrapper.findComponent(BookCardStub)
+    wrapper.get('[aria-label="Обновить книги из Todoist"]').trigger('click')
+    bookCard.vm.$emit('read', book)
+    resolveRefresh([book])
+    await flushPromises()
+    expect(JSON.parse(localStorage.getItem('todoist_books_cache')).items).toEqual([book])
+
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+
+    expect(JSON.parse(localStorage.getItem('todoist_books_cache')).items).toEqual([])
+    expect(wrapper.text()).not.toContain('Book')
+  })
+
+  it('does not restore an old-account book when an in-flight write fails after a token change', async () => {
+    vi.useFakeTimers()
+    const book = { id: 'b1', title: 'Old Account Book', sectionId: 'books' }
+    const newBook = { id: 'b2', title: 'New Account Book', sectionId: 'books' }
+    writeTodoistCache('movies', [])
+    writeTodoistCache('books', [book])
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    let rejectCompletion
+    serviceMocks.completeBookTask.mockImplementation(() => new Promise((resolve, reject) => {
+      rejectCompletion = reject
+    }))
+    const wrapper = mountApp()
+    await flushPromises()
+    await wrapper.get('[aria-label="Показать книги"]').trigger('click')
+    await flushPromises()
+
+    wrapper.findComponent(BookCardStub).vm.$emit('read', book)
+    vi.advanceTimersByTime(5000)
+    await Promise.resolve()
+    expect(serviceMocks.completeBookTask).toHaveBeenCalledWith('token', book.id)
+
+    serviceMocks.fetchBooks.mockResolvedValue([newBook])
+    await wrapper.get('[aria-label="Открыть настройки приложения"]').trigger('click')
+    wrapper.findComponent(SettingsModalStub).vm.$emit('save', {
+      todoistToken: 'new-token',
+      tmdbApiKey: '',
+      corsProxy: ''
+    })
+    await flushPromises()
+    rejectCompletion(new Error('old account write failed'))
+    await flushPromises()
+
+    expect(serviceMocks.createBookReviewTask).not.toHaveBeenCalled()
+    expect(JSON.parse(localStorage.getItem('todoist_books_cache')).items).toEqual([newBook])
+    expect(wrapper.text()).not.toContain('old account write failed')
   })
 })
