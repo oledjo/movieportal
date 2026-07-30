@@ -7,3 +7,8 @@
 **What was decided:** End the full-page loader as soon as the active Todoist list is available, then load movie posters or book covers in the background with the existing artwork progress indicator.
 **Why:** Cached Todoist resources should appear immediately instead of waiting several seconds for batched artwork enrichment.
 **What was rejected:** Removing only the artificial batch delays because artwork processing would still block the page, and skipping artwork refresh entirely because cards still need metadata and images.
+
+## 2026-07-30 — Refresh cached artwork manually
+**What was decided:** On normal loads, hydrate posters and book covers only from the existing valid browser caches. Automatically run the artwork APIs only when no valid cache exists, including after the 30-day expiry; after caching, update artwork only through Refresh.
+**Why:** Cached artwork should appear without repeated network-capable batch work or artificial batch delays, while first use and expired caches still recover automatically.
+**What was rejected:** A duplicate task-ID artwork cache because it would add synchronization and invalidation risk, and merely removing delays because missing artwork would still be fetched automatically on ordinary loads.
