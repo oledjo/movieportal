@@ -28,6 +28,7 @@ export const POSTER_SIZES = {
 
 // In-memory cache for API results
 const cache = new Map()
+let cacheAvailable = false
 
 // LocalStorage cache key
 const CACHE_STORAGE_KEY = 'tmdb_posters_cache'
@@ -44,28 +45,17 @@ function loadCacheFromStorage() {
 
     const parsed = JSON.parse(cached)
     
-    // Check cache version
-    if (parsed.version !== CACHE_VERSION) {
-      console.log('TMDB: Cache version mismatch, clearing old cache')
+    const validData = parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data)
+    const validExpiry = Number.isFinite(parsed.expiry) && parsed.expiry >= Date.now()
+    const complete = parsed.complete === undefined || parsed.complete === true
+    if (parsed.version !== CACHE_VERSION || !validExpiry || !validData || !complete) {
       localStorage.removeItem(CACHE_STORAGE_KEY)
       return
     }
 
-    // Check expiry
-    const now = Date.now()
-    if (parsed.expiry && parsed.expiry < now) {
-      console.log('TMDB: Cache expired, clearing')
-      localStorage.removeItem(CACHE_STORAGE_KEY)
-      return
-    }
-
-    // Load into memory cache
-    if (parsed.data) {
-      Object.entries(parsed.data).forEach(([key, value]) => {
-        cache.set(key, value)
-      })
-      console.log(`TMDB: Loaded ${Object.keys(parsed.data).length} cached poster results`)
-    }
+    Object.entries(parsed.data).forEach(([key, value]) => cache.set(key, value))
+    cacheAvailable = true
+    console.log(`TMDB: Loaded ${Object.keys(parsed.data).length} cached poster results`)
   } catch (e) {
     console.warn('TMDB: Failed to load cache from storage:', e)
     localStorage.removeItem(CACHE_STORAGE_KEY)
@@ -75,7 +65,7 @@ function loadCacheFromStorage() {
 /**
  * Save cache to localStorage
  */
-export function saveCacheToStorage() {
+export function saveCacheToStorage({ complete = true } = {}) {
   try {
     const cacheData = {}
     cache.forEach((value, key) => {
@@ -85,6 +75,7 @@ export function saveCacheToStorage() {
     const toStore = {
       version: CACHE_VERSION,
       expiry: Date.now() + (CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000),
+      complete,
       data: cacheData
     }
 
@@ -103,12 +94,14 @@ export function saveCacheToStorage() {
     }
 
     localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(toStore))
+    cacheAvailable = complete
   } catch (e) {
     console.warn('TMDB: Failed to save cache to storage:', e)
     // If quota exceeded, clear and try again
     if (e.name === 'QuotaExceededError') {
       console.log('TMDB: Storage quota exceeded, clearing cache')
       localStorage.removeItem(CACHE_STORAGE_KEY)
+      cacheAvailable = false
     }
   }
 }
@@ -118,6 +111,7 @@ export function saveCacheToStorage() {
  */
 export function clearTmdbCache() {
   cache.clear()
+  cacheAvailable = false
   localStorage.removeItem(CACHE_STORAGE_KEY)
   console.log('TMDB cache cleared (memory + storage)')
 }
@@ -129,7 +123,7 @@ function debouncedSaveCache() {
     clearTimeout(saveCacheTimeout)
   }
   saveCacheTimeout = setTimeout(() => {
-    saveCacheToStorage()
+    saveCacheToStorage({ complete: false })
     saveCacheTimeout = null
   }, 1000) // Save after 1 second of inactivity
 }
@@ -147,6 +141,28 @@ function cleanTitle(title) {
     .replace(/^(Фильм|Сериал|Аниме|Посмотреть|Мультфильм)\s+/i, '') // Remove prefixes
     .replace(/[«»"']/g, '') // Remove quotes
     .trim()
+}
+
+function getMovieCacheKey(title, year = null, isTV = false) {
+  return `${cleanTitle(title)}-${year}-${isTV}`
+}
+
+export function hasTmdbCache() {
+  return cacheAvailable
+}
+
+export function getCachedMovieResults(movies) {
+  const results = new Map()
+
+  movies.forEach(movie => {
+    const movieResult = cache.get(getMovieCacheKey(movie.title, movie.year, false)) || null
+    const result = !movieResult && movie.isSeries
+      ? cache.get(getMovieCacheKey(movie.title, movie.year, true)) || null
+      : movieResult
+    results.set(movie.id, result)
+  })
+
+  return results
 }
 
 /**
@@ -282,7 +298,7 @@ export async function searchMovie(title, apiKey, year = null, isTV = false) {
   }
 
   const cleanedTitle = cleanTitle(title)
-  const cacheKey = `${cleanedTitle}-${year}-${isTV}`
+  const cacheKey = getMovieCacheKey(title, year, isTV)
 
   // Check in-memory cache first
   if (cache.has(cacheKey)) {
