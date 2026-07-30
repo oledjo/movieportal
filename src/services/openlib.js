@@ -5,6 +5,7 @@ const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes'
 
 // In-memory cache
 const cache = new Map()
+let cacheAvailable = false
 
 // LocalStorage cache
 const CACHE_STORAGE_KEY = 'openlib_books_cache'
@@ -21,24 +22,17 @@ function loadCacheFromStorage() {
 
     const parsed = JSON.parse(cached)
 
-    if (parsed.version !== CACHE_VERSION) {
-      console.log('OpenLib: Cache version mismatch, clearing')
+    const validData = parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data)
+    const validExpiry = Number.isFinite(parsed.expiry) && parsed.expiry >= Date.now()
+    const complete = parsed.complete === undefined || parsed.complete === true
+    if (parsed.version !== CACHE_VERSION || !validExpiry || !validData || !complete) {
       localStorage.removeItem(CACHE_STORAGE_KEY)
       return
     }
 
-    if (parsed.expiry && parsed.expiry < Date.now()) {
-      console.log('OpenLib: Cache expired, clearing')
-      localStorage.removeItem(CACHE_STORAGE_KEY)
-      return
-    }
-
-    if (parsed.data) {
-      Object.entries(parsed.data).forEach(([key, value]) => {
-        cache.set(key, value)
-      })
-      console.log(`OpenLib: Loaded ${Object.keys(parsed.data).length} cached results`)
-    }
+    Object.entries(parsed.data).forEach(([key, value]) => cache.set(key, value))
+    cacheAvailable = true
+    console.log(`OpenLib: Loaded ${Object.keys(parsed.data).length} cached results`)
   } catch (e) {
     console.warn('OpenLib: Failed to load cache:', e)
     localStorage.removeItem(CACHE_STORAGE_KEY)
@@ -48,7 +42,7 @@ function loadCacheFromStorage() {
 /**
  * Save cache to localStorage
  */
-export function saveCacheToStorage() {
+export function saveCacheToStorage({ complete = true } = {}) {
   try {
     const cacheData = {}
     cache.forEach((value, key) => {
@@ -58,6 +52,7 @@ export function saveCacheToStorage() {
     const toStore = {
       version: CACHE_VERSION,
       expiry: Date.now() + (CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000),
+      complete,
       data: cacheData
     }
 
@@ -70,10 +65,12 @@ export function saveCacheToStorage() {
     }
 
     localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(toStore))
+    cacheAvailable = complete
   } catch (e) {
     console.warn('OpenLib: Failed to save cache:', e)
     if (e.name === 'QuotaExceededError') {
       localStorage.removeItem(CACHE_STORAGE_KEY)
+      cacheAvailable = false
     }
   }
 }
@@ -83,6 +80,7 @@ export function saveCacheToStorage() {
  */
 export function clearOpenLibCache() {
   cache.clear()
+  cacheAvailable = false
   localStorage.removeItem(CACHE_STORAGE_KEY)
   console.log('OpenLib cache cleared')
 }
@@ -95,7 +93,7 @@ let saveCacheTimeout = null
 function debouncedSaveCache() {
   if (saveCacheTimeout) clearTimeout(saveCacheTimeout)
   saveCacheTimeout = setTimeout(() => {
-    saveCacheToStorage()
+    saveCacheToStorage({ complete: false })
     saveCacheTimeout = null
   }, 1000)
 }
@@ -112,6 +110,23 @@ function cleanTitle(title) {
     .replace(/[Тт]ом\s*\d+/g, '') // Remove "Том X"
     .replace(/[Кк]нига\s*\d+/g, '') // Remove "Книга X"
     .trim()
+}
+
+function getBookCacheKey(title, author = null) {
+  const cleanedTitle = cleanTitle(title)
+  const searchTitle = TITLE_TRANSLATIONS[cleanedTitle] || cleanedTitle
+  return `${searchTitle}-${author || ''}`
+}
+
+export function hasOpenLibCache() {
+  return cacheAvailable
+}
+
+export function getCachedBookResults(books) {
+  return new Map(books.map(book => [
+    book.id,
+    cache.get(getBookCacheKey(book.title, book.author)) || null
+  ]))
 }
 
 /**
@@ -219,7 +234,7 @@ async function searchGoogleBooks(title, author = null) {
 export async function searchBook(title, author = null) {
   const cleanedTitle = cleanTitle(title)
   const searchTitle = TITLE_TRANSLATIONS[cleanedTitle] || cleanedTitle
-  const cacheKey = `${searchTitle}-${author || ''}`
+  const cacheKey = getBookCacheKey(title, author)
 
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey)
