@@ -1,6 +1,11 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { fetchMovies, completeTask, createTask, updateTaskDueDate, setCorsProxy, SECTIONS, SECTION_NAMES } from './services/todoist.js'
+import {
+  clearTodoistCaches,
+  loadTodoistResources,
+  writeTodoistCache
+} from './services/todoistCache.js'
 import { batchSearchMovies, getPosterUrl, clearTmdbCache, saveCacheToStorage } from './services/tmdb.js'
 import { fetchBooks, completeBookTask, createBookReviewTask, clearBooksCache, setCorsProxy as setBooksCorsProxy } from './services/books.js'
 import { batchSearchBooks, getBookCoverUrl, clearOpenLibCache } from './services/openlib.js'
@@ -363,61 +368,75 @@ const stats = computed(() => ({
 }))
 
 // Load content based on mode
-async function loadContent() {
+async function loadContent(options = {}) {
   if (contentMode.value === 'movies') {
-    await loadMovies()
+    return loadMovies(options)
   } else {
-    await loadBooks()
+    return loadBooks(options)
   }
 }
 
 // Load movies
-async function loadMovies() {
+async function loadMovies({ forceRefresh = false } = {}) {
   if (!todoistToken.value) {
     loading.value = false
     showSettings.value = true
-    return
+    return false
   }
 
   loading.value = true
   error.value = null
 
   try {
-    movies.value = await fetchMovies(todoistToken.value)
+    const { items } = await loadTodoistResources(
+      'movies',
+      () => fetchMovies(todoistToken.value),
+      { forceRefresh }
+    )
+    movies.value = items
     localStorage.setItem('todoist_token', todoistToken.value)
 
     // Load posters if TMDB key is available
     if (tmdbApiKey.value) {
       await loadPosters()
     }
+    return true
   } catch (e) {
     error.value = e.message
     console.error('Error loading movies:', e)
+    return false
   } finally {
     loading.value = false
   }
 }
 
 // Load books
-async function loadBooks() {
+async function loadBooks({ forceRefresh = false } = {}) {
   if (!todoistToken.value) {
     loading.value = false
     showSettings.value = true
-    return
+    return false
   }
 
   loading.value = true
   error.value = null
 
   try {
-    books.value = await fetchBooks(todoistToken.value)
+    const { items } = await loadTodoistResources(
+      'books',
+      () => fetchBooks(todoistToken.value),
+      { forceRefresh }
+    )
+    books.value = items
     localStorage.setItem('todoist_token', todoistToken.value)
 
     // Load book covers
     await loadBookCovers()
+    return true
   } catch (e) {
     error.value = e.message
     console.error('Error loading books:', e)
+    return false
   } finally {
     loading.value = false
   }
@@ -738,7 +757,9 @@ async function handleBookRead(book) {
 
 // Save settings
 function saveSettings(settings) {
+  const tokenChanged = todoistToken.value !== settings.todoistToken
   todoistToken.value = settings.todoistToken
+  if (tokenChanged) clearTodoistCaches()
   tmdbApiKey.value = settings.tmdbApiKey
   corsProxy.value = settings.corsProxy || ''
   localStorage.setItem('cors_proxy', corsProxy.value)
