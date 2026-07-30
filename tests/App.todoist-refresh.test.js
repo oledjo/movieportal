@@ -95,6 +95,16 @@ function mountApp() {
   })
 }
 
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 function createLocalStorage() {
   const values = new Map()
   return {
@@ -128,6 +138,40 @@ describe('Todoist cached loading', () => {
     await flushPromises()
     expect(serviceMocks.fetchMovies).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Cached Movie')
+  })
+
+  it('shows cached movies before poster loading finishes', async () => {
+    const artwork = createDeferred()
+    localStorage.setItem('tmdb_api_key', 'key')
+    writeTodoistCache('movies', [{ id: 'm1', title: 'Fast Movie', sectionId: 'movies' }])
+    serviceMocks.batchSearchMovies.mockReturnValueOnce(artwork.promise)
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Fast Movie')
+    expect(wrapper.text()).not.toContain('Загрузка фильмов...')
+    expect(serviceMocks.batchSearchMovies).toHaveBeenCalledOnce()
+
+    artwork.resolve(new Map())
+    await flushPromises()
+  })
+
+  it('shows cached books before cover loading finishes', async () => {
+    const artwork = createDeferred()
+    localStorage.setItem('content_mode', 'books')
+    writeTodoistCache('books', [{ id: 'b1', title: 'Fast Book', sectionId: 'books' }])
+    serviceMocks.batchSearchBooks.mockReturnValueOnce(artwork.promise)
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Fast Book')
+    expect(wrapper.text()).not.toContain('Загрузка книг...')
+    expect(serviceMocks.batchSearchBooks).toHaveBeenCalledOnce()
+
+    artwork.resolve(new Map())
+    await flushPromises()
   })
 
   it('fetches movies once when their cache is absent', async () => {

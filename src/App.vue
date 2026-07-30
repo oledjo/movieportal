@@ -408,6 +408,7 @@ async function loadMovies({ forceRefresh = false, loadArtwork = true } = {}) {
 
   loading.value = true
   error.value = null
+  let succeeded = false
 
   try {
     const { items } = await loadTodoistResources(
@@ -417,19 +418,20 @@ async function loadMovies({ forceRefresh = false, loadArtwork = true } = {}) {
     )
     movies.value = items
     localStorage.setItem('todoist_token', todoistToken.value)
-
-    // Load posters if TMDB key is available
-    if (loadArtwork && tmdbApiKey.value) {
-      await loadPosters()
-    }
-    return true
+    succeeded = true
   } catch (e) {
     error.value = e.message
     console.error('Error loading movies:', e)
-    return false
   } finally {
     loading.value = false
   }
+
+  if (succeeded && loadArtwork && tmdbApiKey.value) {
+    void loadPosters().catch(e => {
+      console.error('Unexpected background poster loading error:', e)
+    })
+  }
+  return succeeded
 }
 
 // Load books
@@ -442,6 +444,7 @@ async function loadBooks({ forceRefresh = false, loadArtwork = true } = {}) {
 
   loading.value = true
   error.value = null
+  let succeeded = false
 
   try {
     const { items } = await loadTodoistResources(
@@ -451,17 +454,20 @@ async function loadBooks({ forceRefresh = false, loadArtwork = true } = {}) {
     )
     books.value = items
     localStorage.setItem('todoist_token', todoistToken.value)
-
-    // Load book covers
-    if (loadArtwork) await loadBookCovers()
-    return true
+    succeeded = true
   } catch (e) {
     error.value = e.message
     console.error('Error loading books:', e)
-    return false
   } finally {
     loading.value = false
   }
+
+  if (succeeded && loadArtwork) {
+    void loadBookCovers().catch(e => {
+      console.error('Unexpected background cover loading error:', e)
+    })
+  }
+  return succeeded
 }
 
 // Load book covers from Open Library
