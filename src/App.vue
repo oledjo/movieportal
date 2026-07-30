@@ -6,9 +6,9 @@ import {
   loadTodoistResources,
   writeTodoistCache
 } from './services/todoistCache.js'
-import { batchSearchMovies, getPosterUrl, clearTmdbCache, saveCacheToStorage } from './services/tmdb.js'
+import { batchSearchMovies, getPosterUrl, clearTmdbCache, saveCacheToStorage, hasTmdbCache, getCachedMovieResults } from './services/tmdb.js'
 import { fetchBooks, completeBookTask, createBookReviewTask, clearBooksCache, setCorsProxy as setBooksCorsProxy } from './services/books.js'
-import { batchSearchBooks, getBookCoverUrl, clearOpenLibCache } from './services/openlib.js'
+import { batchSearchBooks, getBookCoverUrl, clearOpenLibCache, hasOpenLibCache, getCachedBookResults } from './services/openlib.js'
 import MovieCard from './components/MovieCard.vue'
 import MovieModal from './components/MovieModal.vue'
 import BookCard from './components/BookCard.vue'
@@ -426,10 +426,14 @@ async function loadMovies({ forceRefresh = false, loadArtwork = true } = {}) {
     loading.value = false
   }
 
-  if (succeeded && loadArtwork && tmdbApiKey.value) {
-    void loadPosters().catch(e => {
-      console.error('Unexpected background poster loading error:', e)
-    })
+  if (succeeded && loadArtwork) {
+    if (hasTmdbCache()) {
+      posters.value = getCachedMovieResults(movies.value)
+    } else if (tmdbApiKey.value) {
+      void loadPosters().catch(e => {
+        console.error('Unexpected background poster loading error:', e)
+      })
+    }
   }
   return succeeded
 }
@@ -463,9 +467,13 @@ async function loadBooks({ forceRefresh = false, loadArtwork = true } = {}) {
   }
 
   if (succeeded && loadArtwork) {
-    void loadBookCovers().catch(e => {
-      console.error('Unexpected background cover loading error:', e)
-    })
+    if (hasOpenLibCache()) {
+      bookCovers.value = getCachedBookResults(books.value)
+    } else {
+      void loadBookCovers().catch(e => {
+        console.error('Unexpected background cover loading error:', e)
+      })
+    }
   }
   return succeeded
 }

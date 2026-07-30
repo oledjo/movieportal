@@ -14,6 +14,10 @@ const serviceMocks = vi.hoisted(() => ({
   createBookReviewTask: vi.fn(),
   batchSearchMovies: vi.fn(),
   batchSearchBooks: vi.fn(),
+  hasTmdbCache: vi.fn(),
+  getCachedMovieResults: vi.fn(),
+  hasOpenLibCache: vi.fn(),
+  getCachedBookResults: vi.fn(),
   clearTmdbCache: vi.fn(),
   clearOpenLibCache: vi.fn(),
   clearBooksCache: vi.fn()
@@ -39,6 +43,8 @@ vi.mock('../src/services/books.js', () => ({
 
 vi.mock('../src/services/tmdb.js', () => ({
   batchSearchMovies: serviceMocks.batchSearchMovies,
+  hasTmdbCache: serviceMocks.hasTmdbCache,
+  getCachedMovieResults: serviceMocks.getCachedMovieResults,
   getPosterUrl: vi.fn(),
   clearTmdbCache: serviceMocks.clearTmdbCache,
   saveCacheToStorage: vi.fn()
@@ -46,6 +52,8 @@ vi.mock('../src/services/tmdb.js', () => ({
 
 vi.mock('../src/services/openlib.js', () => ({
   batchSearchBooks: serviceMocks.batchSearchBooks,
+  hasOpenLibCache: serviceMocks.hasOpenLibCache,
+  getCachedBookResults: serviceMocks.getCachedBookResults,
   getBookCoverUrl: vi.fn(),
   clearOpenLibCache: serviceMocks.clearOpenLibCache
 }))
@@ -125,6 +133,10 @@ describe('Todoist cached loading', () => {
     vi.resetAllMocks()
     serviceMocks.batchSearchMovies.mockResolvedValue(new Map())
     serviceMocks.batchSearchBooks.mockResolvedValue(new Map())
+    serviceMocks.hasTmdbCache.mockReturnValue(false)
+    serviceMocks.getCachedMovieResults.mockReturnValue(new Map())
+    serviceMocks.hasOpenLibCache.mockReturnValue(false)
+    serviceMocks.getCachedBookResults.mockReturnValue(new Map())
   })
 
   afterEach(() => {
@@ -138,6 +150,36 @@ describe('Todoist cached loading', () => {
     await flushPromises()
     expect(serviceMocks.fetchMovies).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Cached Movie')
+  })
+
+  it('hydrates movies from valid artwork cache without a network batch', async () => {
+    const movie = { id: 'm1', title: 'Cached Movie', sectionId: 'movies' }
+    writeTodoistCache('movies', [movie])
+    serviceMocks.hasTmdbCache.mockReturnValue(true)
+    const cached = new Map([['m1', { posterPath: '/cached.jpg' }]])
+    serviceMocks.getCachedMovieResults.mockReturnValue(cached)
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Cached Movie')
+    expect(serviceMocks.getCachedMovieResults).toHaveBeenCalledWith([movie])
+    expect(serviceMocks.batchSearchMovies).not.toHaveBeenCalled()
+  })
+
+  it('hydrates books from valid artwork cache without a network batch', async () => {
+    const book = { id: 'b1', title: 'Cached Book', sectionId: 'books' }
+    localStorage.setItem('content_mode', 'books')
+    writeTodoistCache('books', [book])
+    serviceMocks.hasOpenLibCache.mockReturnValue(true)
+    serviceMocks.getCachedBookResults.mockReturnValue(new Map([['b1', { coverId: 42 }]]))
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Cached Book')
+    expect(serviceMocks.getCachedBookResults).toHaveBeenCalledWith([book])
+    expect(serviceMocks.batchSearchBooks).not.toHaveBeenCalled()
   })
 
   it('shows cached movies before poster loading finishes', async () => {
@@ -263,6 +305,38 @@ describe('Todoist cached loading', () => {
     expect(wrapper.text()).toContain('Old Movie')
     expect(JSON.parse(localStorage.getItem('todoist_movies_cache')).items[0].id).toBe('old')
     expect(wrapper.text()).toContain('offline')
+  })
+
+  it('clears valid movie artwork cache and awaits a full batch on Refresh', async () => {
+    const oldMovie = { id: 'old', title: 'Old Movie', sectionId: 'movies' }
+    const newMovie = { id: 'new', title: 'New Movie', sectionId: 'movies' }
+    const artwork = createDeferred()
+    localStorage.setItem('tmdb_api_key', 'key')
+    writeTodoistCache('movies', [oldMovie])
+    serviceMocks.hasTmdbCache.mockReturnValue(true)
+    serviceMocks.getCachedMovieResults.mockReturnValue(new Map([['old', { posterPath: '/old.jpg' }]]))
+    serviceMocks.fetchMovies.mockResolvedValue([newMovie])
+
+    const wrapper = mountApp()
+    await flushPromises()
+    expect(serviceMocks.getCachedMovieResults).toHaveBeenCalledOnce()
+    expect(serviceMocks.batchSearchMovies).not.toHaveBeenCalled()
+
+    serviceMocks.clearTmdbCache.mockClear()
+    serviceMocks.batchSearchMovies.mockReturnValueOnce(artwork.promise)
+    wrapper.get('[aria-label="Обновить фильмы из Todoist"]').trigger('click')
+    await flushPromises()
+
+    expect(serviceMocks.fetchMovies).toHaveBeenCalledOnce()
+    expect(serviceMocks.clearTmdbCache).toHaveBeenCalledOnce()
+    expect(serviceMocks.clearTmdbCache.mock.invocationCallOrder[0])
+      .toBeGreaterThan(serviceMocks.fetchMovies.mock.invocationCallOrder[0])
+    expect(serviceMocks.batchSearchMovies).toHaveBeenCalledOnce()
+    expect(wrapper.text()).not.toContain('Фильмы обновлены')
+
+    artwork.resolve(new Map([['new', { posterPath: '/new.jpg' }]]))
+    await flushPromises()
+    expect(wrapper.text()).toContain('Фильмы обновлены')
   })
 
   it('refreshes Books and clears book artwork only after Todoist succeeds', async () => {
