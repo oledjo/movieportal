@@ -13,6 +13,7 @@
 - Keep the existing 30-day artwork cache expiry, cache keys, versions, matching rules, batch sizes, and real-network rate-limit delays.
 - Cache-only reads must never call TMDB, Open Library, or Google Books, must not wait between batches, and must not save or extend cache expiry.
 - A valid cache is authoritative even when a current Todoist item has no entry; return `null` artwork until Refresh.
+- Debounced partial saves during a first/full batch must remain unavailable for cache-only page loads; only the final completed batch marks the cache ready. Existing persisted caches without the new readiness field remain valid for backward compatibility.
 - Normal artwork work must remain non-blocking for the Todoist list.
 - Manual Refresh must still refresh Todoist first, then clear and await the active full artwork batch.
 - Do not add a second task-ID localStorage cache or change filters, scheduling, Todoist mutations, or card presentation.
@@ -89,7 +90,8 @@ describe('TMDB artwork cache', () => {
     ['wrong version', { version: 99, expiry: future(), data: {} }, undefined],
     ['expired data', { version: 1, expiry: Date.now() - 1, data: {} }, undefined],
     ['missing expiry', { version: 1, data: {} }, undefined],
-    ['missing data object', { version: 1, expiry: future() }, undefined]
+    ['missing data object', { version: 1, expiry: future() }, undefined],
+    ['incomplete batch', { version: 1, expiry: future(), complete: false, data: {} }, undefined]
   ])('rejects %s', async (_name, data, rawValue) => {
     const tmdb = await loadTmdb(data, rawValue)
     expect(tmdb.hasTmdbCache()).toBe(false)
@@ -98,6 +100,8 @@ describe('TMDB artwork cache', () => {
 
   it('updates availability when saving and clearing', async () => {
     const tmdb = await loadTmdb()
+    expect(tmdb.hasTmdbCache()).toBe(false)
+    tmdb.saveCacheToStorage({ complete: false })
     expect(tmdb.hasTmdbCache()).toBe(false)
     tmdb.saveCacheToStorage()
     expect(tmdb.hasTmdbCache()).toBe(true)
@@ -131,7 +135,8 @@ Use this validation inside `loadCacheFromStorage()` after parsing:
 ```js
 const validData = parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data)
 const validExpiry = Number.isFinite(parsed.expiry) && parsed.expiry >= Date.now()
-if (parsed.version !== CACHE_VERSION || !validExpiry || !validData) {
+const complete = parsed.complete === undefined || parsed.complete === true
+if (parsed.version !== CACHE_VERSION || !validExpiry || !validData || !complete) {
   localStorage.removeItem(CACHE_STORAGE_KEY)
   return
 }
@@ -140,12 +145,7 @@ Object.entries(parsed.data).forEach(([key, value]) => cache.set(key, value))
 cacheAvailable = true
 ```
 
-Update save and clear boundaries explicitly:
-
-```js
-localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(toStore))
-cacheAvailable = true
-```
+Change the declaration to `export function saveCacheToStorage({ complete = true } = {})`. Add `complete,` between the existing `expiry` and `data` properties in `toStore`. Immediately after the existing successful `localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(toStore))` line, add `cacheAvailable = complete`. Leaving the option unspecified preserves completed-save behavior for the final batch and existing callers.
 
 ```js
 export function clearTmdbCache() {
@@ -156,7 +156,7 @@ export function clearTmdbCache() {
 }
 ```
 
-Set `cacheAvailable = false` as well when the quota-error path removes localStorage. Parsing errors already remove storage and retain the initial false value.
+Set `cacheAvailable = false` as well when the quota-error path removes localStorage. Parsing errors already remove storage and retain the initial false value. Change `debouncedSaveCache()` to call `saveCacheToStorage({ complete: false })`; keep the final `saveCacheToStorage()` at the end of `batchSearchMovies()` so only successful batch completion marks the cache available.
 
 - [ ] **Step 4: Implement cache-only movie resolution**
 
@@ -265,7 +265,8 @@ describe('book artwork cache', () => {
     ['wrong version', { version: 99, expiry: future(), data: {} }, undefined],
     ['expired data', { version: 2, expiry: Date.now() - 1, data: {} }, undefined],
     ['missing expiry', { version: 2, data: {} }, undefined],
-    ['missing data object', { version: 2, expiry: future() }, undefined]
+    ['missing data object', { version: 2, expiry: future() }, undefined],
+    ['incomplete batch', { version: 2, expiry: future(), complete: false, data: {} }, undefined]
   ])('rejects %s', async (_name, data, rawValue) => {
     const openlib = await loadOpenLib(data, rawValue)
     expect(openlib.hasOpenLibCache()).toBe(false)
@@ -274,6 +275,8 @@ describe('book artwork cache', () => {
 
   it('updates availability when saving and clearing', async () => {
     const openlib = await loadOpenLib()
+    openlib.saveCacheToStorage({ complete: false })
+    expect(openlib.hasOpenLibCache()).toBe(false)
     openlib.saveCacheToStorage()
     expect(openlib.hasOpenLibCache()).toBe(true)
     openlib.clearOpenLibCache()
@@ -306,7 +309,8 @@ Validate and load persisted data without changing the version or 30-day timestam
 ```js
 const validData = parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data)
 const validExpiry = Number.isFinite(parsed.expiry) && parsed.expiry >= Date.now()
-if (parsed.version !== CACHE_VERSION || !validExpiry || !validData) {
+const complete = parsed.complete === undefined || parsed.complete === true
+if (parsed.version !== CACHE_VERSION || !validExpiry || !validData || !complete) {
   localStorage.removeItem(CACHE_STORAGE_KEY)
   return
 }
@@ -315,7 +319,7 @@ Object.entries(parsed.data).forEach(([key, value]) => cache.set(key, value))
 cacheAvailable = true
 ```
 
-After a successful `localStorage.setItem`, set `cacheAvailable = true`. Set it false in the quota-error removal path and in the existing clear function:
+Change the save signature to `saveCacheToStorage({ complete = true } = {})`, persist the `complete` field beside `version`, `expiry`, and `data`, and set `cacheAvailable = complete` after successful `localStorage.setItem`. Existing stored objects without `complete` remain readable; newly written partial objects explicitly contain `false`. Set availability false in the quota-error removal path and in the existing clear function:
 
 ```js
 export function clearOpenLibCache() {
@@ -325,6 +329,8 @@ export function clearOpenLibCache() {
   console.log('OpenLib cache cleared')
 }
 ```
+
+Change `debouncedSaveCache()` to call `saveCacheToStorage({ complete: false })`; keep the final parameterless `saveCacheToStorage()` at the end of `batchSearchBooks()` so only full batch completion marks the cache available.
 
 - [ ] **Step 4: Implement cache-only book resolution**
 
