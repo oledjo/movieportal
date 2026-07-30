@@ -25,6 +25,8 @@ async function loadTmdb(data, rawValue) {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
   storage.clear()
   vi.unstubAllGlobals()
 })
@@ -81,6 +83,49 @@ describe('TMDB artwork cache', () => {
     tmdb.saveCacheToStorage()
     expect(tmdb.hasTmdbCache()).toBe(true)
     tmdb.clearTmdbCache()
+    expect(tmdb.hasTmdbCache()).toBe(false)
+  })
+
+  it('persists debounced search progress as incomplete until the final batch save', async () => {
+    vi.useFakeTimers()
+    const tmdb = await loadTmdb()
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: [] })
+    })
+
+    await tmdb.searchMovie('Missing Movie', 'key')
+
+    expect(localStorage.getItem('tmdb_posters_cache')).toBeNull()
+    expect(tmdb.hasTmdbCache()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    const partial = JSON.parse(localStorage.getItem('tmdb_posters_cache'))
+    expect(partial.complete).toBe(false)
+    expect(partial.data['Missing Movie-null-false']).toBeNull()
+    expect(tmdb.hasTmdbCache()).toBe(false)
+
+    await tmdb.batchSearchMovies([], 'key')
+
+    const complete = JSON.parse(localStorage.getItem('tmdb_posters_cache'))
+    expect(complete.complete).toBe(true)
+    expect(tmdb.hasTmdbCache()).toBe(true)
+  })
+
+  it('removes persisted cache and readiness after a quota failure', async () => {
+    const tmdb = await loadTmdb()
+    await tmdb.batchSearchMovies([], '')
+    expect(JSON.parse(localStorage.getItem('tmdb_posters_cache')).complete).toBe(true)
+    expect(tmdb.hasTmdbCache()).toBe(true)
+
+    vi.spyOn(storage, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota exceeded', 'QuotaExceededError')
+    })
+
+    tmdb.saveCacheToStorage()
+
+    expect(localStorage.getItem('tmdb_posters_cache')).toBeNull()
     expect(tmdb.hasTmdbCache()).toBe(false)
   })
 })

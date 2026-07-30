@@ -25,6 +25,8 @@ async function loadOpenLib(data, rawValue) {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
   storage.clear()
   vi.unstubAllGlobals()
 })
@@ -72,6 +74,49 @@ describe('book artwork cache', () => {
     openlib.saveCacheToStorage()
     expect(openlib.hasOpenLibCache()).toBe(true)
     openlib.clearOpenLibCache()
+    expect(openlib.hasOpenLibCache()).toBe(false)
+  })
+
+  it('persists debounced search progress as incomplete until the final batch save', async () => {
+    vi.useFakeTimers()
+    const openlib = await loadOpenLib()
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ docs: [], items: [] })
+    })
+
+    await openlib.searchBook('Missing Book')
+
+    expect(localStorage.getItem('openlib_books_cache')).toBeNull()
+    expect(openlib.hasOpenLibCache()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    const partial = JSON.parse(localStorage.getItem('openlib_books_cache'))
+    expect(partial.complete).toBe(false)
+    expect(partial.data['Missing Book-']).toBeNull()
+    expect(openlib.hasOpenLibCache()).toBe(false)
+
+    await openlib.batchSearchBooks([])
+
+    const complete = JSON.parse(localStorage.getItem('openlib_books_cache'))
+    expect(complete.complete).toBe(true)
+    expect(openlib.hasOpenLibCache()).toBe(true)
+  })
+
+  it('removes persisted cache and readiness after a quota failure', async () => {
+    const openlib = await loadOpenLib()
+    await openlib.batchSearchBooks([])
+    expect(JSON.parse(localStorage.getItem('openlib_books_cache')).complete).toBe(true)
+    expect(openlib.hasOpenLibCache()).toBe(true)
+
+    vi.spyOn(storage, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota exceeded', 'QuotaExceededError')
+    })
+
+    openlib.saveCacheToStorage()
+
+    expect(localStorage.getItem('openlib_books_cache')).toBeNull()
     expect(openlib.hasOpenLibCache()).toBe(false)
   })
 })

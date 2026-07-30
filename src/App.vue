@@ -429,7 +429,7 @@ async function loadMovies({ forceRefresh = false, loadArtwork = true } = {}) {
   if (succeeded && loadArtwork) {
     if (hasTmdbCache()) {
       posters.value = getCachedMovieResults(movies.value)
-    } else if (tmdbApiKey.value) {
+    } else if (movies.value.length === 0 || tmdbApiKey.value) {
       void loadPosters().catch(e => {
         console.error('Unexpected background poster loading error:', e)
       })
@@ -480,8 +480,6 @@ async function loadBooks({ forceRefresh = false, loadArtwork = true } = {}) {
 
 // Load book covers from Open Library
 async function loadBookCovers() {
-  if (books.value.length === 0) return
-
   loadingPosters.value = true
   postersProgress.value = { current: 0, total: books.value.length }
 
@@ -497,8 +495,6 @@ async function loadBookCovers() {
     let found = 0
     results.forEach((v) => { if (v && v.coverId) found++ })
     console.log(`Book covers loaded: ${found}/${books.value.length} found`)
-  } catch (e) {
-    console.error('Error loading book covers:', e)
   } finally {
     loadingPosters.value = false
   }
@@ -533,8 +529,8 @@ function closeBook() {
 async function loadPosters() {
   console.log('loadPosters called, TMDB key:', tmdbApiKey.value ? 'present' : 'missing', 'movies:', movies.value.length)
 
-  if (!tmdbApiKey.value || movies.value.length === 0) {
-    console.warn('Skipping poster load: no API key or no movies')
+  if (!tmdbApiKey.value && movies.value.length > 0) {
+    console.warn('Skipping poster load: no API key')
     return
   }
 
@@ -542,7 +538,7 @@ async function loadPosters() {
   postersProgress.value = { current: 0, total: movies.value.length }
 
   try {
-    localStorage.setItem('tmdb_api_key', tmdbApiKey.value)
+    if (tmdbApiKey.value) localStorage.setItem('tmdb_api_key', tmdbApiKey.value)
     const results = await batchSearchMovies(
       movies.value,
       tmdbApiKey.value,
@@ -557,8 +553,6 @@ async function loadPosters() {
     let found = 0
     results.forEach((v) => { if (v && v.posterPath) found++ })
     console.log(`Posters loaded: ${found}/${movies.value.length} found`)
-  } catch (e) {
-    console.error('Error loading posters:', e)
   } finally {
     loadingPosters.value = false
   }
@@ -749,16 +743,21 @@ async function refreshContent() {
     return
   }
 
-  if (mode === 'movies') {
-    clearTmdbCache()
-    posters.value.clear()
-    if (tmdbApiKey.value) await loadPosters()
-    showToast('Фильмы обновлены', 'success')
-  } else {
-    clearOpenLibCache()
-    bookCovers.value.clear()
-    await loadBookCovers()
-    showToast('Книги обновлены', 'success')
+  try {
+    if (mode === 'movies') {
+      clearTmdbCache()
+      posters.value.clear()
+      if (movies.value.length === 0 || tmdbApiKey.value) await loadPosters()
+      showToast('Фильмы обновлены', 'success')
+    } else {
+      clearOpenLibCache()
+      bookCovers.value.clear()
+      await loadBookCovers()
+      showToast('Книги обновлены', 'success')
+    }
+  } catch (e) {
+    console.error(`Error refreshing ${mode} artwork:`, e)
+    showToast('Ошибка обновления обложек: ' + e.message, 'error')
   }
 }
 
