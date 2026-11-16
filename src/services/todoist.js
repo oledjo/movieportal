@@ -295,12 +295,10 @@ export async function fetchMovies(apiToken) {
 
     const projectTasks = await fetchAllPages(`${TODOIST_API_URL}/tasks?project_id=${project.id}`, { headers })
     if (!projectTasks.ok) {
-      // Only the root project is mandatory; a failing sub-project is skipped
-      if (project.id === MOVIES_PROJECT_ID) {
-        throwTodoistError(projectTasks.status)
-      }
-      continue
+      // Don't silently return a partial list
+      throwTodoistError(projectTasks.status)
     }
+    console.log(`Todoist project "${project.name}": ${projectTasks.results.length} tasks`)
     // Tasks outside any section in a sub-project get the sub-project name
     projectTasks.results.forEach(task => {
       if (!task.section_id && project.id !== MOVIES_PROJECT_ID) {
