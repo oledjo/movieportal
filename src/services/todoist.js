@@ -238,6 +238,39 @@ export function parseMovieInfo(task, allTasks = [], actualSections = {}) {
 }
 
 /**
+ * Returns the movies project and all its descendant sub-projects.
+ * Falls back to the root project alone if the projects list can't be loaded.
+ */
+async function fetchMovieProjects(headers) {
+  const root = { id: MOVIES_PROJECT_ID, name: 'Фильмы' }
+  const data = await fetchAllPages(`${TODOIST_API_URL}/projects`, { headers })
+  if (!data.ok) return [root]
+
+  const ids = new Set([MOVIES_PROJECT_ID])
+  const result = [root]
+  let added = true
+  while (added) {
+    added = false
+    for (const p of data.results) {
+      const parent = p.parent_id
+      if (parent && ids.has(parent) && !ids.has(p.id)) {
+        ids.add(p.id)
+        result.push({ id: p.id, name: p.name })
+        added = true
+      }
+    }
+  }
+  return result
+}
+
+function throwTodoistError(status) {
+  if (status === 401) throw new Error('Неверный Todoist токен. Проверьте настройки.')
+  if (status === 403) throw new Error('Нет доступа к проекту в Todoist.')
+  if (status >= 500) throw new Error('Сервер Todoist временно недоступен. Попробуйте позже.')
+  throw new Error(`Ошибка Todoist: ${status}`)
+}
+
+/**
  * Fetch movies from Todoist API
  */
 export async function fetchMovies(apiToken) {
@@ -245,39 +278,38 @@ export async function fetchMovies(apiToken) {
     throw new Error('Todoist API token is required')
   }
 
-  // First fetch sections to get actual section IDs and names
-  const sectionsData = await fetchAllPages(`${TODOIST_API_URL}/sections?project_id=${MOVIES_PROJECT_ID}`, {
-    headers: {
-      'Authorization': `Bearer ${apiToken}`
-    }
-  })
+  const headers = { 'Authorization': `Bearer ${apiToken}` }
 
-  let actualSections = {}
-  if (sectionsData.ok) {
-    sectionsData.results.forEach(section => {
-      actualSections[section.id] = section.name
+  // Movies project plus all of its sub-projects (at any depth)
+  const projects = await fetchMovieProjects(headers)
+
+  const actualSections = {}
+  const tasks = []
+  for (const project of projects) {
+    const sectionsData = await fetchAllPages(`${TODOIST_API_URL}/sections?project_id=${project.id}`, { headers })
+    if (sectionsData.ok) {
+      sectionsData.results.forEach(section => {
+        actualSections[section.id] = section.name
+      })
+    }
+
+    const projectTasks = await fetchAllPages(`${TODOIST_API_URL}/tasks?project_id=${project.id}`, { headers })
+    if (!projectTasks.ok) {
+      // Only the root project is mandatory; a failing sub-project is skipped
+      if (project.id === MOVIES_PROJECT_ID) {
+        throwTodoistError(projectTasks.status)
+      }
+      continue
+    }
+    // Tasks outside any section in a sub-project get the sub-project name
+    projectTasks.results.forEach(task => {
+      if (!task.section_id && project.id !== MOVIES_PROJECT_ID) {
+        task.section_id = `project:${project.id}`
+        actualSections[task.section_id] = project.name
+      }
     })
-    console.log('Fetched sections:', actualSections)
+    tasks.push(...projectTasks.results)
   }
-
-  const tasksData = await fetchAllPages(`${TODOIST_API_URL}/tasks?project_id=${MOVIES_PROJECT_ID}`, {
-    headers: {
-      'Authorization': `Bearer ${apiToken}`
-    }
-  })
-
-  if (!tasksData.ok) {
-    if (tasksData.status === 401) {
-      throw new Error('Неверный Todoist токен. Проверьте настройки.')
-    } else if (tasksData.status === 403) {
-      throw new Error('Нет доступа к проекту в Todoist.')
-    } else if (tasksData.status >= 500) {
-      throw new Error('Сервер Todoist временно недоступен. Попробуйте позже.')
-    }
-    throw new Error(`Ошибка Todoist: ${tasksData.status}`)
-  }
-
-  const tasks = tasksData.results
 
   // Filter out rules and subtasks, parse movie info
   const movies = tasks
